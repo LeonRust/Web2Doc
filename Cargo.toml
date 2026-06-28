@@ -1,0 +1,33 @@
+[package]
+name = "web2doc"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "Crawl an online documentation site into structured local Markdown for AI coding context"
+publish = false
+
+# 依赖按里程碑用 `cargo add` 引入（plan §3，实现期验证版本）：
+#   M1.2+ anyhow thiserror · M1.3 clap url · M1.4 tracing tracing-subscriber
+#   M1.7 reqwest tokio futures · M1.8/M2 serde serde_json
+#   M1.10 scraper dom_smoothie · M1.12 htmd · M3 sha2 mime_guess
+#   M4 chromiumoxide · M5 texting_robots
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+dom_smoothie = "0.18.0"
+futures = "0.3.32"
+htmd = "0.5.4"
+lol_html = "3.0.0"
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "charset"] }
+scraper = "0.27.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+thiserror = "2"
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "time"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+url = "2"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+tiny_http = "0.12.0"

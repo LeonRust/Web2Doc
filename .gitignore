@@ -1,0 +1,9 @@
+# Rust
+/target
+
+# 产物默认输出目录（含 manifest.json / assets/ / .cache/）
+/web2doc-out
+
+# 杂项
+*.log
+.DS_Store

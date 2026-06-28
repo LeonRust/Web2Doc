@@ -25,6 +25,7 @@ web2doc/
 ├── docs/specs/<feature>/        # SDD 文档：spec.md / plan.md / tasks.md
 ├── src/
 │   ├── main.rs                  # 入口：仅解析 CLI、装配、启动
+│   ├── lib.rs                   # 库根：聚合 pub 模块（lib + bin 结构）
 │   ├── cli.rs                   # 命令行参数定义（clap）
 │   ├── config.rs                # 运行配置（合并 CLI + 环境变量）
 │   ├── obs.rs                   # tracing / 可观测性初始化（共用基础）

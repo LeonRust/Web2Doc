@@ -5,7 +5,7 @@
 - 上游: `spec.md` v1.2 Frozen、`constitution.md`
 - 范围: 本文件描述 **HOW**。实现期若与依赖现实冲突，以 `cargo` 实际验证为准并回写本文件（constitution §1、§8）。
 
-> 依赖均标注 *拟选型*，第一次 `cargo add` 时核实可用版本；不可用则按"备选"替换并在此记录。MSRV 暂定 Rust 1.75+（async fn in trait 可用）。
+> 依赖均标注 *拟选型*，第一次 `cargo add` 时核实可用版本；不可用则按"备选"替换并在此记录。MSRV **1.85+**（实现期依 clap 4.6 等依赖现实确定，回写自原"暂定 1.75"）。
 
 ---
 
