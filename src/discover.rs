@@ -139,23 +139,27 @@ pub async fn discover<F: Fetcher>(
 ) -> Result<Discovery> {
     let host = start.host_str().unwrap_or_default().to_string();
 
-    let mut candidates: Vec<Url> = Vec::new();
+    // 1) sitemap 优先
+    let mut sitemap_candidates: Vec<Url> = Vec::new();
     if let Ok(sm) = start.join("/sitemap.xml") {
         if let Ok(page) = fetcher.render(&sm).await {
             if page.status == 200 {
-                candidates = parse_sitemap_locs(&page.html)
+                sitemap_candidates = parse_sitemap_locs(&page.html)
                     .iter()
                     .filter_map(|s| Url::parse(s).ok())
                     .collect();
             }
         }
     }
+    let mut discovery = build_discovery(sitemap_candidates, &host, prefixes, max_pages);
 
-    if candidates.is_empty() {
-        candidates = bfs_links(fetcher, start, &host, prefixes, max_pages, rules).await;
+    // 2) sitemap 未覆盖抓取前缀（baseline 为空）→ 回退首页导航 + 前缀内 BFS
+    if discovery.baseline_total == 0 {
+        let bfs = bfs_links(fetcher, start, &host, prefixes, max_pages, rules).await;
+        discovery = build_discovery(bfs, &host, prefixes, max_pages);
     }
 
-    Ok(build_discovery(candidates, &host, prefixes, max_pages))
+    Ok(discovery)
 }
 
 /// 前缀内广度优先收集链接（无 sitemap 时）。软上限防止无界扩散。
@@ -298,5 +302,38 @@ mod tests {
         assert_eq!(d.baseline_total, 2); // tags 被过滤
         assert!(d.tasks.iter().any(|t| t.url.path() == "/docs/a"));
         assert!(d.tasks.iter().any(|t| t.url.path() == "/docs/b"));
+    }
+
+    #[tokio::test]
+    async fn falls_back_to_bfs_when_sitemap_misses_prefix() {
+        // sitemap 的 loc 不在抓取前缀内 → 应回退首页导航 + BFS
+        let mut pages = HashMap::new();
+        pages.insert(
+            "https://x.com/sitemap.xml".to_string(),
+            (
+                200,
+                "<urlset><url><loc>https://x.com/other/p</loc></url></urlset>".to_string(),
+            ),
+        );
+        pages.insert(
+            "https://x.com/docs/".to_string(),
+            (200, r#"<nav><a href="/docs/a">A</a></nav>"#.to_string()),
+        );
+        pages.insert(
+            "https://x.com/docs/a".to_string(),
+            (200, "<p>leaf</p>".to_string()),
+        );
+        let f = MockFetcher { pages };
+        let d = discover(
+            &f,
+            &u("https://x.com/docs/"),
+            &["/docs/".to_string()],
+            500,
+            &RuleSet::fallback(),
+        )
+        .await
+        .unwrap();
+        assert!(d.baseline_total >= 1);
+        assert!(d.tasks.iter().any(|t| t.url.path() == "/docs/a"));
     }
 }

@@ -36,4 +36,13 @@ mod tests {
         let md = to_markdown(r#"<a href="guide/b.md">Guide</a>"#).unwrap();
         assert!(md.contains("[Guide](guide/b.md)"), "got: {md}");
     }
+
+    #[test]
+    fn converts_multiline_code_block() {
+        let md = to_markdown("<pre><code>a\nb\nc</code></pre>").unwrap();
+        assert!(
+            md.contains("a\nb\nc"),
+            "htmd should preserve newlines, got: {md}"
+        );
+    }
 }
