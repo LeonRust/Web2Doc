@@ -146,3 +146,47 @@ async fn max_pages_truncation_is_partial_not_failure() {
     assert_eq!(report.ok, 1);
     assert!(!report.is_failure(0.2));
 }
+
+/// 启动含 `robots.txt`（Disallow /docs/b）的 fixture server。
+fn start_server_with_robots() -> u16 {
+    let server = tiny_http::Server::http("127.0.0.1:0").expect("bind");
+    let port = server.server_addr().to_ip().expect("ip addr").port();
+    std::thread::spawn(move || {
+        for req in server.incoming_requests() {
+            let path = req.url().split('?').next().unwrap_or("").to_string();
+            let (status, body, ctype): (u16, String, &str) = match path.as_str() {
+                "/robots.txt" => (
+                    200,
+                    "User-agent: *\nDisallow: /docs/b".to_string(),
+                    "text/plain",
+                ),
+                "/sitemap.xml" => (200, sitemap(port), "application/xml"),
+                "/docs/a" => (200, doc_html("A", "/docs/b"), "text/html"),
+                "/docs/b" => (200, doc_html("B", "/docs/a"), "text/html"),
+                _ => (404, "nope".to_string(), "text/plain"),
+            };
+            let header =
+                tiny_http::Header::from_bytes(&b"Content-Type"[..], ctype.as_bytes()).unwrap();
+            let resp = tiny_http::Response::from_string(body)
+                .with_status_code(status)
+                .with_header(header);
+            let _ = req.respond(resp);
+        }
+    });
+    port
+}
+
+#[tokio::test]
+async fn robots_disallow_excludes_page() {
+    let port = start_server_with_robots();
+    let tmp = tempfile::tempdir().unwrap();
+    let config = config_for(port, tmp.path().to_path_buf(), 500, false); // ignore_robots=false
+    let fetcher = StaticFetcher::new().unwrap();
+
+    let report = pipeline::run(&fetcher, &config).await.unwrap();
+
+    // /docs/b 被 robots.txt 排除 → 只抓 /docs/a（A9 / C9）
+    assert_eq!(report.ok, 1);
+    assert!(tmp.path().join("docs/a.md").exists());
+    assert!(!tmp.path().join("docs/b.md").exists());
+}

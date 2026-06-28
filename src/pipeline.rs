@@ -1,6 +1,6 @@
-//! 编排：discover → 阶段A（抓取+提取+缓存）→ 阶段B（下载图片+改写+转换+写盘）→ 索引 + 报告。
+//! 编排：robots → discover → 阶段A（抓取+提取+缓存）→ 阶段B（下载图片+改写+转换+写盘）→ 索引/bundle + 报告。
 //!
-//! plan §2/§7。M1：静态引擎、回退规则；M3：阶段 B 下载图片本地化。
+//! plan §2/§7。M1：静态引擎、回退规则；M3：图片本地化；M5：robots 合规 + 警告聚合。
 //! `std::sync::Mutex` 串行写 manifest（增量原子写支持续传）。失败隔离：单页失败不中断整体。
 
 use std::collections::BTreeMap;
@@ -21,6 +21,7 @@ use crate::extract::{self, ExtractOutcome, Extracted};
 use crate::fetcher::Fetcher;
 use crate::report::RunReport;
 use crate::rewrite;
+use crate::robots::RobotsPolicy;
 use crate::rules::RuleSet;
 use crate::urlx;
 use crate::writer::{self, Manifest, PageRecord, PageStatus};
@@ -36,12 +37,22 @@ pub async fn run<F: Fetcher + Sync>(fetcher: &F, config: &Config) -> Result<RunR
     let rules = RuleSet::fallback(); // M1：无 LLM，使用回退规则
     let prefixes = effective_prefixes(config);
 
+    // robots 拉取 + 图片下载共用的 HTTP 客户端（与页面抓取引擎解耦）。
+    let http = reqwest::Client::builder()
+        .user_agent(concat!("web2doc/", env!("CARGO_PKG_VERSION")))
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| Error::Fetch(format!("http client: {e}")))?;
+
+    let robots = RobotsPolicy::load(&http, &config.start_url, config.ignore_robots).await;
+
     let discovery = discover::discover(
         fetcher,
         &config.start_url,
         &prefixes,
         config.max_pages,
         &rules,
+        &robots,
     )
     .await?;
 
@@ -58,26 +69,39 @@ pub async fn run<F: Fetcher + Sync>(fetcher: &F, config: &Config) -> Result<RunR
 
     std::fs::create_dir_all(config.out_dir.join(".cache"))?;
 
-    // 图片下载用的 HTTP 客户端（与页面抓取引擎解耦）。
-    let asset_client = reqwest::Client::builder()
-        .user_agent(concat!("web2doc/", env!("CARGO_PKG_VERSION")))
-        .timeout(Duration::from_secs(30))
-        .build()
-        .map_err(|e| Error::Fetch(format!("asset client: {e}")))?;
-
     stage_fetch(fetcher, config, &rules, &manifest).await;
-    stage_write(config, &page_map, &manifest, &asset_client).await;
+    stage_write(config, &page_map, &manifest, &http).await;
 
     let guard = lock(&manifest);
     writer::write_index(&config.out_dir, &guard)?;
     if config.bundle {
         writer::write_bundle(&config.out_dir, &guard)?;
     }
-    Ok(RunReport::build(&guard, discovery.tasks.len(), Vec::new()))
+    let warnings = collect_warnings(&discovery, &guard);
+    Ok(RunReport::build(&guard, discovery.tasks.len(), warnings))
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+fn collect_warnings(discovery: &Discovery, manifest: &Manifest) -> Vec<String> {
+    let mut w = Vec::new();
+    if discovery.robots_skipped > 0 {
+        w.push(format!(
+            "{} 个页面被 robots.txt 排除",
+            discovery.robots_skipped
+        ));
+    }
+    let excluded = manifest
+        .pages
+        .values()
+        .filter(|r| r.status == PageStatus::Excluded)
+        .count();
+    if excluded > 0 {
+        w.push(format!("{excluded} 个页面判为非正文/空壳被排除"));
+    }
+    w
 }
 
 fn effective_prefixes(config: &Config) -> Vec<String> {
@@ -206,7 +230,7 @@ async fn stage_write(
     config: &Config,
     page_map: &BTreeMap<String, String>,
     manifest: &Arc<Mutex<Manifest>>,
-    asset_client: &reqwest::Client,
+    http: &reqwest::Client,
 ) {
     let fetched: Vec<(String, String, String)> = {
         let m = lock(manifest);
@@ -230,7 +254,7 @@ async fn stage_write(
             let page_map = page_map.clone();
             async move {
                 let result = process_write(
-                    asset_client,
+                    http,
                     &cache_dir,
                     &cache_file,
                     &rel,
@@ -260,7 +284,7 @@ async fn stage_write(
 
 /// 收尾单页：下载图片本地化 → 改写 → 转 MD → 写盘。返回已下载资源相对路径列表。
 async fn process_write(
-    asset_client: &reqwest::Client,
+    http: &reqwest::Client,
     cache_dir: &Path,
     cache_file: &str,
     rel: &str,
@@ -276,7 +300,7 @@ async fn process_write(
     let mut asset_map: BTreeMap<String, String> = BTreeMap::new();
     let mut asset_rels: Vec<String> = Vec::new();
     for img in &ex.images {
-        if let Ok(name) = assets::download_image(asset_client, img, assets_dir).await {
+        if let Ok(name) = assets::download_image(http, img, assets_dir).await {
             let local = format!("assets/{name}");
             asset_map.insert(img.clone(), urlx::relative_path(rel, &local));
             asset_rels.push(local);

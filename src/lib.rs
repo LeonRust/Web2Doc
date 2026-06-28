@@ -14,6 +14,7 @@ pub mod obs;
 pub mod pipeline;
 pub mod report;
 pub mod rewrite;
+pub mod robots;
 pub mod rules;
 pub mod urlx;
 pub mod writer;
