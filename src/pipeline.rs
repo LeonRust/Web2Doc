@@ -1,7 +1,7 @@
-//! 编排：discover → 阶段A（抓取+提取+缓存）→ 阶段B（改写+转换+写盘）→ 索引 + 报告。
+//! 编排：discover → 阶段A（抓取+提取+缓存）→ 阶段B（下载图片+改写+转换+写盘）→ 索引 + 报告。
 //!
-//! plan §2/§7。M1：静态引擎、回退规则、不下载图片；`std::sync::Mutex` 串行写 manifest
-//! （增量原子写支持续传；mpsc 单写者优化留后）。失败隔离：单页失败不中断整体。
+//! plan §2/§7。M1：静态引擎、回退规则；M3：阶段 B 下载图片本地化。
+//! `std::sync::Mutex` 串行写 manifest（增量原子写支持续传）。失败隔离：单页失败不中断整体。
 
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
@@ -12,6 +12,7 @@ use std::time::Duration;
 use futures::stream::{self, StreamExt};
 use url::Url;
 
+use crate::assets;
 use crate::config::Config;
 use crate::convert;
 use crate::discover::{self, Discovery};
@@ -57,11 +58,21 @@ pub async fn run<F: Fetcher + Sync>(fetcher: &F, config: &Config) -> Result<RunR
 
     std::fs::create_dir_all(config.out_dir.join(".cache"))?;
 
+    // 图片下载用的 HTTP 客户端（与页面抓取引擎解耦）。
+    let asset_client = reqwest::Client::builder()
+        .user_agent(concat!("web2doc/", env!("CARGO_PKG_VERSION")))
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| Error::Fetch(format!("asset client: {e}")))?;
+
     stage_fetch(fetcher, config, &rules, &manifest).await;
-    stage_write(config, &page_map, &manifest).await;
+    stage_write(config, &page_map, &manifest, &asset_client).await;
 
     let guard = lock(&manifest);
     writer::write_index(&config.out_dir, &guard)?;
+    if config.bundle {
+        writer::write_bundle(&config.out_dir, &guard)?;
+    }
     Ok(RunReport::build(&guard, discovery.tasks.len(), Vec::new()))
 }
 
@@ -190,11 +201,12 @@ async fn process_fetch<F: Fetcher>(
     }
 }
 
-/// 阶段 B：对已 Fetched 页改写+转换+写盘，标记 Written（已知全量映射）。
+/// 阶段 B：对已 Fetched 页下载图片 + 改写 + 转换 + 写盘，标记 Written（已知全量映射）。
 async fn stage_write(
     config: &Config,
     page_map: &BTreeMap<String, String>,
     manifest: &Arc<Mutex<Manifest>>,
+    asset_client: &reqwest::Client,
 ) {
     let fetched: Vec<(String, String, String)> = {
         let m = lock(manifest);
@@ -206,20 +218,34 @@ async fn stage_write(
     };
 
     let cache_dir = config.out_dir.join(".cache");
+    let assets_dir = config.out_dir.join("assets");
     let out_dir = config.out_dir.clone();
 
     stream::iter(fetched)
         .for_each_concurrent(config.concurrency, |(key, rel, cache_file)| {
             let manifest = Arc::clone(manifest);
             let cache_dir = cache_dir.clone();
+            let assets_dir = assets_dir.clone();
             let out_dir = out_dir.clone();
             let page_map = page_map.clone();
             async move {
-                let result = process_write(&cache_dir, &cache_file, &rel, &page_map, &out_dir);
+                let result = process_write(
+                    asset_client,
+                    &cache_dir,
+                    &cache_file,
+                    &rel,
+                    &page_map,
+                    &assets_dir,
+                    &out_dir,
+                )
+                .await;
                 let mut m = lock(&manifest);
                 if let Some(rec) = m.pages.get_mut(&key) {
                     match result {
-                        Ok(()) => rec.status = PageStatus::Written,
+                        Ok(asset_rels) => {
+                            rec.status = PageStatus::Written;
+                            rec.assets = asset_rels;
+                        }
                         Err(e) => {
                             rec.status = PageStatus::Failed;
                             rec.error = Some(e.to_string());
@@ -232,24 +258,40 @@ async fn stage_write(
         .await;
 }
 
-fn process_write(
+/// 收尾单页：下载图片本地化 → 改写 → 转 MD → 写盘。返回已下载资源相对路径列表。
+async fn process_write(
+    asset_client: &reqwest::Client,
     cache_dir: &Path,
     cache_file: &str,
     rel: &str,
     page_map: &BTreeMap<String, String>,
+    assets_dir: &Path,
     out_dir: &Path,
-) -> Result<()> {
+) -> Result<Vec<String>> {
     let data = std::fs::read_to_string(cache_dir.join(cache_file))?;
     let ex: Extracted =
         serde_json::from_str(&data).map_err(|e| Error::Extract(format!("cache read: {e}")))?;
-    let rewritten = rewrite::rewrite(&ex.content_html, rel, page_map)?;
+
+    // 下载正文图片 → asset_map（src → 相对当前页本地路径），失败则不映射（rewrite 保持绝对）。
+    let mut asset_map: BTreeMap<String, String> = BTreeMap::new();
+    let mut asset_rels: Vec<String> = Vec::new();
+    for img in &ex.images {
+        if let Ok(name) = assets::download_image(asset_client, img, assets_dir).await {
+            let local = format!("assets/{name}");
+            asset_map.insert(img.clone(), urlx::relative_path(rel, &local));
+            asset_rels.push(local);
+        }
+    }
+
+    let rewritten = rewrite::rewrite(&ex.content_html, rel, page_map, &asset_map)?;
     let body = convert::to_markdown(&rewritten)?;
     let md = if ex.title.trim().is_empty() {
         body
     } else {
         format!("# {}\n\n{}", ex.title.trim(), body)
     };
-    writer::write_markdown(out_dir, rel, &md)
+    writer::write_markdown(out_dir, rel, &md)?;
+    Ok(asset_rels)
 }
 
 fn cache_name(key: &str) -> String {

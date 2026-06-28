@@ -2,6 +2,7 @@
 //!
 //! 模块按 plan v1.0 / constitution §2 逐里程碑加入。
 
+pub mod assets;
 pub mod cli;
 pub mod config;
 pub mod convert;
