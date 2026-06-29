@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::cli::OutputFormat;
 use crate::error::{Error, Result};
 use crate::rules::RuleSet;
 
@@ -86,8 +87,18 @@ pub fn write_markdown(out_dir: &Path, rel_path: &str, content_md: &str) -> Resul
     Ok(())
 }
 
+/// 写任意内容到镜像路径（自动建父目录，格式无关）。
+pub fn write_file(out_dir: &Path, rel: &str, content: &str) -> Result<()> {
+    let full = safe_join(out_dir, rel)?;
+    if let Some(parent) = full.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&full, content)?;
+    Ok(())
+}
+
 /// 写总索引 `index.md`：按 `nav_order` 列出 `Written` 页面，回退键字典序。
-pub fn write_index(out_dir: &Path, manifest: &Manifest) -> Result<()> {
+pub fn write_index(out_dir: &Path, manifest: &Manifest, format: OutputFormat) -> Result<()> {
     let order: Vec<&String> = if manifest.nav_order.is_empty() {
         manifest.pages.keys().collect()
     } else {
@@ -98,7 +109,12 @@ pub fn write_index(out_dir: &Path, manifest: &Manifest) -> Result<()> {
     for key in order {
         if let Some(rec) = manifest.pages.get(key) {
             if rec.status == PageStatus::Written {
-                md.push_str(&format!("- [{0}]({0})\n", rec.rel_path));
+                let link = if format == OutputFormat::Html {
+                    rec.rel_path.replace(".md", ".html")
+                } else {
+                    rec.rel_path.clone()
+                };
+                md.push_str(&format!("- [{0}]({0})\n", link));
             }
         }
     }
@@ -215,7 +231,7 @@ mod tests {
     #[test]
     fn index_lists_only_written_in_nav_order() {
         let tmp = tempfile::tempdir().unwrap();
-        write_index(tmp.path(), &sample()).unwrap();
+        write_index(tmp.path(), &sample(), OutputFormat::Md).unwrap();
         let idx = std::fs::read_to_string(tmp.path().join("index.md")).unwrap();
         assert!(idx.contains("[docs/a.md](docs/a.md)"));
         assert!(!idx.contains("docs/b.md")); // Excluded 不列入

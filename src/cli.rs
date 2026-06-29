@@ -16,6 +16,16 @@ pub enum Mode {
     Dynamic,
 }
 
+/// 输出格式。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum)]
+pub enum OutputFormat {
+    /// Markdown（默认，适合大多数文档站）。
+    #[default]
+    Md,
+    /// HTML（保真度高：表格/隐藏 tab/代码块结构完整保留，适合复杂 API 文档）。
+    Html,
+}
+
 /// web2doc：抓取在线文档站为本地结构化 Markdown。
 #[derive(Debug, Parser)]
 #[command(name = "web2doc", version, about)]
@@ -71,6 +81,10 @@ pub struct Cli {
     #[arg(long)]
     pub bundle: bool,
 
+    /// 输出格式：md（Markdown，默认）或 html。
+    #[arg(long, value_enum, default_value = "md")]
+    pub format: OutputFormat,
+
     /// 忽略 robots.txt（默认尊重）。
     #[arg(long)]
     pub ignore_robots: bool,
@@ -99,6 +113,7 @@ mod tests {
         assert_eq!(cli.base_url, "https://api.deepseek.com");
         assert_eq!(cli.model, "deepseek-chat");
         assert!(!cli.bundle);
+        assert_eq!(cli.format, OutputFormat::Md);
         assert!(!cli.ignore_robots);
         assert!(!cli.fresh);
     }

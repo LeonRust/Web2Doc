@@ -1,0 +1,63 @@
+{
+  "root_url": "https://api-docs.deepseek.com/zh-cn/api/create-chat-completion",
+  "prefix": "/zh-cn/api/",
+  "rules": {
+    "content_selector": "main, article, [role=main], .markdown-body, .content, #content",
+    "exclude_selectors": [
+      "nav",
+      "aside",
+      "header",
+      "footer",
+      ".sidebar",
+      ".toc",
+      ".breadcrumb",
+      ".pagination",
+      ".edit-this-page",
+      ".cookie",
+      ".search"
+    ],
+    "nav_link_selector": "nav a, aside a, .sidebar a, .toc a, .menu a",
+    "looks_like_spa": false
+  },
+  "baseline_total": 5,
+  "truncated": true,
+  "nav_order": [
+    "https://api-docs.deepseek.com/zh-cn/api/create-chat-completion",
+    "https://api-docs.deepseek.com/zh-cn/api/deepseek-api",
+    "https://api-docs.deepseek.com/zh-cn/api/create-completion"
+  ],
+  "pages": {
+    "https://api-docs.deepseek.com/zh-cn/api/create-chat-completion": {
+      "url": "https://api-docs.deepseek.com/zh-cn/api/create-chat-completion",
+      "rel_path": "zh-cn/api/create-chat-completion.md",
+      "status": "Written",
+      "cache": "476cd3fa85bf4d27.json",
+      "assets": [],
+      "error": null
+    },
+    "https://api-docs.deepseek.com/zh-cn/api/create-completion": {
+      "url": "https://api-docs.deepseek.com/zh-cn/api/create-completion",
+      "rel_path": "zh-cn/api/create-completion.md",
+      "status": "Written",
+      "cache": "e0998be6bfe0ac1c.json",
+      "assets": [],
+      "error": null
+    },
+    "https://api-docs.deepseek.com/zh-cn/api/deepseek-api": {
+      "url": "https://api-docs.deepseek.com/zh-cn/api/deepseek-api",
+      "rel_path": "zh-cn/api/deepseek-api.md",
+      "status": "Written",
+      "cache": "a94dd05f6921bdfb.json",
+      "assets": [
+        "assets/87dfb459046c3805.png",
+        "assets/87dfb459046c3805.png",
+        "assets/3bda99da0a78513a.jpg"
+      ],
+      "error": null
+    }
+  },
+  "assets_seen": {
+    "https://cdn.deepseek.com/official_account.jpg": "assets/3bda99da0a78513a.jpg",
+    "https://cdn.deepseek.com/platform/favicon.png": "assets/87dfb459046c3805.png"
+  }
+}

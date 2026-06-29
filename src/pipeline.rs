@@ -14,6 +14,7 @@ use url::Url;
 
 use crate::assets;
 use crate::cli::Mode;
+use crate::cli::OutputFormat;
 use crate::config::Config;
 use crate::convert;
 use crate::discover::{self, Discovery};
@@ -76,7 +77,7 @@ pub async fn run<F: Fetcher + Sync>(fetcher: &F, config: &Config) -> Result<RunR
     stage_write(config, &page_map, &manifest, &http).await;
 
     let guard = lock(&manifest);
-    writer::write_index(&config.out_dir, &guard)?;
+    writer::write_index(&config.out_dir, &guard, config.format)?;
     if config.bundle {
         writer::write_bundle(&config.out_dir, &guard)?;
     }
@@ -277,6 +278,7 @@ async fn stage_write(
     let out_dir = config.out_dir.clone();
     let host = config.start_url.host_str().unwrap_or_default().to_string();
     let prefixes = effective_prefixes(config);
+    let format = config.format;
 
     stream::iter(fetched)
         .for_each_concurrent(config.concurrency, |(key, rel, cache_file)| {
@@ -300,6 +302,7 @@ async fn stage_write(
                     &seen_cache,
                     &host,
                     &prefixes,
+                    format,
                 )
                 .await;
                 let mut m = lock(&manifest);
@@ -337,6 +340,7 @@ async fn process_write(
     asset_seen_cache: &BTreeMap<String, String>,
     host: &str,
     prefixes: &[String],
+    format: OutputFormat,
 ) -> Result<(Vec<String>, Vec<(String, String)>)> {
     let data = std::fs::read_to_string(cache_dir.join(cache_file))?;
     let ex: Extracted =
@@ -362,13 +366,26 @@ async fn process_write(
     }
 
     let rewritten = rewrite::rewrite(&ex.content_html, rel, page_map, &asset_map, host, prefixes)?;
-    let body = convert::to_markdown(&convert::fix_tables(&rewritten))?;
-    let md = if ex.title.trim().is_empty() {
-        body
-    } else {
-        format!("# {}\n\n{}", ex.title.trim(), body)
-    };
-    writer::write_markdown(out_dir, rel, &md)?;
+    match format {
+        OutputFormat::Md => {
+            let body = convert::to_markdown(&convert::fix_tables(&rewritten))?;
+            let md = if ex.title.trim().is_empty() {
+                body
+            } else {
+                format!("# {}\n\n{}", ex.title.trim(), body)
+            };
+            writer::write_markdown(out_dir, rel, &md)?;
+        }
+        OutputFormat::Html => {
+            let page = if ex.title.trim().is_empty() {
+                rewritten
+            } else {
+                format!("<!-- title: {} -->\n{}", ex.title, rewritten)
+            };
+            let html_rel = rel.replace(".md", ".html");
+            writer::write_file(out_dir, &html_rel, &page)?;
+        }
+    }
     Ok((asset_rels, new_seen))
 }
 

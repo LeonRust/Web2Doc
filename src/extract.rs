@@ -33,19 +33,20 @@ pub enum ExtractOutcome {
 }
 
 /// 从渲染后的 HTML 提取正文。`url` 用于将正文相对链接绝对化。
+/// readability 失败或内容过短时回退为 scraper 直接提取正文容器。
 pub fn extract(html: &str, url: &Url, _rules: &RuleSet) -> ExtractOutcome {
     let mut readability = match Readability::new(html, Some(url.as_str()), None) {
         Ok(r) => r,
-        Err(e) => return ExtractOutcome::Excluded(format!("readability init: {e}")),
+        Err(_) => return fallback_extract(html, url),
     };
     let article = match readability.parse() {
         Ok(a) => a,
-        Err(e) => return ExtractOutcome::Excluded(format!("no article: {e}")),
+        Err(_) => return fallback_extract(html, url),
     };
 
     let text_len = article.text_content.trim().chars().count();
     if text_len < MIN_CONTENT_CHARS {
-        return ExtractOutcome::Excluded(format!("content too short ({text_len} chars)"));
+        return fallback_extract(html, url);
     }
 
     let content_html = article.content.to_string();
@@ -58,6 +59,37 @@ pub fn extract(html: &str, url: &Url, _rules: &RuleSet) -> ExtractOutcome {
         images,
         embeds,
     }))
+}
+
+/// readability 失败 / 内容过短时的回退：直接用 scraper 从 body 取 inner HTML（避免逐候选早停丢失 <pre>）。
+fn fallback_extract(html: &str, _url: &Url) -> ExtractOutcome {
+    let doc = Html::parse_document(html);
+    let title = if let Ok(sel) = Selector::parse("title") {
+        doc.select(&sel)
+            .next()
+            .map(|el| el.text().collect::<String>())
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    if let Ok(sel) = Selector::parse("body") {
+        if let Some(el) = doc.select(&sel).next() {
+            let text = el.text().collect::<String>();
+            if text.trim().chars().count() >= MIN_CONTENT_CHARS {
+                let content_html = el.inner_html();
+                let (links, images, embeds) = collect_resources(&content_html);
+                return ExtractOutcome::Content(Box::new(Extracted {
+                    title,
+                    content_html,
+                    links,
+                    images,
+                    embeds,
+                }));
+            }
+        }
+    }
+    ExtractOutcome::Excluded("fallback: body too short / not found".to_string())
 }
 
 /// 从正文 HTML 收集内链 / 图片 / 嵌入资源（绝对 URL 字符串）。

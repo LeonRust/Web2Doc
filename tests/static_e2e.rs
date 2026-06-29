@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use url::Url;
 use web2doc::cli::Mode;
+use web2doc::cli::OutputFormat;
 use web2doc::config::Config;
 use web2doc::fetcher::StaticFetcher;
 use web2doc::pipeline;
@@ -76,6 +77,7 @@ fn config_for(port: u16, out: PathBuf, max_pages: usize, fresh: bool) -> Config 
         model: "none".to_string(),
         max_failure_rate: 0.2,
         bundle: false,
+        format: OutputFormat::Md,
         ignore_robots: false,
         fresh,
         verbose: 0,
