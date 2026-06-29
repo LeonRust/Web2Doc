@@ -1,7 +1,7 @@
 # Tasks · Web2Doc
 
 - Feature ID: `web2doc`
-- 状态: **v1.2（吸收 R-1~R-6 + C-1 映射归属 `urlx`；实现待启动）**
+- 状态: **v1.3（M1–M5 全部实现并真实验证；详见 git history）**
 - 上游: `spec.md` v1.2 Frozen、`plan.md` v1.0 Frozen、`constitution.md`（§2/§3 已回写纳入新模块，R-1）
 - 说明: 把 plan 拆为**可独立验证的原子任务**。每个任务含 输入(依赖) / 输出(交付物) / 完成标准 / 状态。
 
