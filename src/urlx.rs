@@ -189,6 +189,31 @@ fn short_hash(s: &str) -> String {
     format!("{:08x}", h.finish() as u32)
 }
 
+/// 基础 URL→rel_path 映射（单 URL，无需全量集同名消歧）。
+/// 用于 rewrite 对不在 `page_map` 中的**站内同前缀链接**推算其本地镜像路径（B 方案）。
+pub fn map_single_path(url: &Url) -> String {
+    let trailing = url.path().ends_with('/');
+    let segs: Vec<String> = url
+        .path_segments()
+        .map(|it| it.filter(|s| !s.is_empty()).map(sanitize_segment).collect())
+        .unwrap_or_default();
+    if trailing || segs.is_empty() {
+        if segs.is_empty() {
+            "index.md".to_string()
+        } else {
+            format!("{}/index.md", segs.join("/"))
+        }
+    } else {
+        let (dirs, last) = segs.split_at(segs.len().saturating_sub(1));
+        let name = file_name_for(&last[0]);
+        if dirs.is_empty() {
+            name
+        } else {
+            format!("{}/{}", dirs.join("/"), name)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -279,5 +304,20 @@ mod tests {
     fn sanitizes_traversal_and_illegal() {
         assert_eq!(sanitize_segment(".."), "-");
         assert_eq!(sanitize_segment("a:b*c"), "a-b-c");
+    }
+
+    #[test]
+    fn single_path_mapping() {
+        assert_eq!(map_single_path(&u("https://x.com/")), "index.md");
+        assert_eq!(map_single_path(&u("https://x.com/docs/")), "docs/index.md");
+        assert_eq!(
+            map_single_path(&u("https://x.com/docs/intro.html")),
+            "docs/intro.md"
+        );
+        assert_eq!(map_single_path(&u("https://x.com/guide")), "guide.md");
+        assert_eq!(
+            map_single_path(&u("https://x.com/zh-cn/guides/tool_calls")),
+            "zh-cn/guides/tool_calls.md"
+        );
     }
 }

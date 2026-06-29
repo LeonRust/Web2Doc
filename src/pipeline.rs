@@ -275,9 +275,13 @@ async fn stage_write(
     let cache_dir = config.out_dir.join(".cache");
     let assets_dir = config.out_dir.join("assets");
     let out_dir = config.out_dir.clone();
+    let host = config.start_url.host_str().unwrap_or_default().to_string();
+    let prefixes = effective_prefixes(config);
 
     stream::iter(fetched)
         .for_each_concurrent(config.concurrency, |(key, rel, cache_file)| {
+            let host = host.clone();
+            let prefixes = prefixes.clone();
             let manifest = Arc::clone(manifest);
             let cache_dir = cache_dir.clone();
             let assets_dir = assets_dir.clone();
@@ -294,6 +298,8 @@ async fn stage_write(
                     &assets_dir,
                     &out_dir,
                     &seen_cache,
+                    &host,
+                    &prefixes,
                 )
                 .await;
                 let mut m = lock(&manifest);
@@ -329,6 +335,8 @@ async fn process_write(
     assets_dir: &Path,
     out_dir: &Path,
     asset_seen_cache: &BTreeMap<String, String>,
+    host: &str,
+    prefixes: &[String],
 ) -> Result<(Vec<String>, Vec<(String, String)>)> {
     let data = std::fs::read_to_string(cache_dir.join(cache_file))?;
     let ex: Extracted =
@@ -353,8 +361,8 @@ async fn process_write(
         }
     }
 
-    let rewritten = rewrite::rewrite(&ex.content_html, rel, page_map, &asset_map)?;
-    let body = convert::to_markdown(&rewritten)?;
+    let rewritten = rewrite::rewrite(&ex.content_html, rel, page_map, &asset_map, host, prefixes)?;
+    let body = convert::to_markdown(&convert::fix_tables(&rewritten))?;
     let md = if ex.title.trim().is_empty() {
         body
     } else {
