@@ -2,7 +2,7 @@
 /target
 
 # 产物默认输出目录（含 manifest.json / assets/ / .cache/）
-/web2doc-out
+/web2doc-*
 
 # 杂项
 *.log
