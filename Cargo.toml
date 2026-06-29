@@ -13,6 +13,7 @@ publish = false
 #   M4 chromiumoxide · M5 texting_robots
 [dependencies]
 anyhow = "1"
+chromiumoxide = "0.9.1"
 clap = { version = "4", features = ["derive"] }
 dom_smoothie = "0.18.0"
 futures = "0.3.32"

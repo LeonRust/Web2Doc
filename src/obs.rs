@@ -11,8 +11,10 @@ use tracing_subscriber::{fmt, EnvFilter};
 /// 幂等：重复调用（如测试）不会 panic（`try_init` 失败被忽略）。
 pub fn init(verbose: u8) {
     let level = level_for(verbose);
-    let filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level.to_string()));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        // 抑制 chromiumoxide CDP 协议版本噪声（"WS Invalid message"）。
+        EnvFilter::new(format!("{level},chromiumoxide=error"))
+    });
     let _ = fmt().with_env_filter(filter).with_target(false).try_init();
 }
 

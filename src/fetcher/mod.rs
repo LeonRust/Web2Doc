@@ -1,7 +1,10 @@
 //! 抓取引擎：trait 抽象 + 实现（constitution §3：上层只依赖 trait）。
 
+pub mod detect;
+mod dynamic;
 mod static_;
 
+pub use dynamic::DynamicFetcher;
 pub use static_::StaticFetcher;
 
 use url::Url;
@@ -26,10 +29,10 @@ pub struct RenderedPage {
     pub status: u16,
 }
 
-/// 抓取引擎抽象。M1 仅 [`StaticFetcher`]；动态引擎在 M4。
+/// 抓取引擎抽象。
 ///
-/// 采用原生 async fn in trait；M1 经具体类型 / 枚举分发（非 `dyn`），
-/// future 的 `Send` 性由各实现保证（reqwest future 为 Send）。
+/// 采用原生 async fn in trait；经具体类型 / [`AnyFetcher`] 枚举分发（非 `dyn`），
+/// future 的 `Send` 性由各实现保证。
 #[allow(async_fn_in_trait)]
 pub trait Fetcher {
     /// 抓取并（动态引擎时）渲染单页。
@@ -37,4 +40,26 @@ pub trait Fetcher {
 
     /// 引擎类型（用于日志/报告）。
     fn engine(&self) -> Engine;
+}
+
+/// 运行时引擎分发：main 据 `--mode` 与 Chrome 检测选择静态或动态。
+pub enum AnyFetcher {
+    Static(StaticFetcher),
+    Dynamic(Box<DynamicFetcher>),
+}
+
+impl Fetcher for AnyFetcher {
+    async fn render(&self, url: &Url) -> Result<RenderedPage> {
+        match self {
+            AnyFetcher::Static(f) => f.render(url).await,
+            AnyFetcher::Dynamic(f) => f.render(url).await,
+        }
+    }
+
+    fn engine(&self) -> Engine {
+        match self {
+            AnyFetcher::Static(f) => f.engine(),
+            AnyFetcher::Dynamic(f) => f.engine(),
+        }
+    }
 }
