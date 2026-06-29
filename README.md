@@ -8,18 +8,18 @@
 - **端到端抓取**：给定文档站首页 URL，自动跨页发现并抓取整站文档（`sitemap` → 导航 → 前缀 BFS 降级链）。
 - **正文去噪**：readability 算法提取正文，剔除导航 / 侧栏 / 页脚 / 广告等噪声；非正文页 / 空壳自动排除。
 - **LLM 规则分析（可选）**：配置 `OPENAI_API_KEY` 时由 LLM 站点级**一次**分析正文/导航选择器（4 级降级链；无 key 自动回退默认规则）。
-- **图片本地化**：正文图片下载到 `assets/`，引用改写为相对路径（无死链）。
+- **图片本地化**：正文图片下载到 `assets/`，引用改写为相对路径（无死链）；manifest 级去重缓存避免重复下载。
 - **内链相对化**：站内链接改写为本地相对路径，离线可跳转。
 - **代码块保真**：保留代码换行 / 缩进、表格、标题（对喂 AI 的代码示例至关重要）。
 - **断点续传**：中断后重跑跳过已完成页，不产生半成品。
 - **robots 合规**：默认尊重 `robots.txt`（可 `--ignore-robots`）。
-- **可信口径**：覆盖率 / 失败率独立度量；`max-pages` 截断标记 Partial 且不判失败；警告聚合。
+- **可信口径**：覆盖率 / 失败率独立度量；`max-pages` 截断标记 Partial 且不判失败；警告聚合；`--max-failure-rate` 可控阈值。
 - **合并产物**：`--bundle` 生成全文单文件，便于整体投喂 AI。
 
 ## 安装
 
 ```bash
-cargo build --release   # 二进制：target/release/web2doc
+cargo build --release   # 二进制：target/release/web2doc（MSRV 1.85）
 ```
 
 ## 用法
@@ -33,9 +33,9 @@ web2doc https://api-docs.deepseek.com/zh-cn/ --max-pages 50 --out ./deepseek-doc
 # SPA 站点：用动态引擎（headless Chrome 渲染）
 web2doc https://some-spa-docs.example.com/ --mode dynamic
 
-# 启用 LLM 规则分析（OpenAI 兼容）
+# 启用 LLM 规则分析（OpenAI 兼容）+ 合并产物
 export OPENAI_API_KEY=sk-...   # 兼容 DEEPSEEK_API_KEY
-web2doc https://docs.example.com/
+web2doc https://docs.example.com/ --bundle
 ```
 
 ### 常用选项
@@ -54,6 +54,7 @@ web2doc https://docs.example.com/
 | `--model <NAME>` | LLM 模型 | `deepseek-chat` |
 | `--bundle` | 额外输出合并文件 `_bundle.md` | 关闭 |
 | `--ignore-robots` | 忽略 robots.txt | 关闭（尊重） |
+| `--max-failure-rate <F>` | 失败率阈值（超过判整次失败） | 0.20 |
 | `--fresh` | 忽略既有进度重新抓取 | 关闭（自动续传） |
 | `-v` / `-vv` | 日志详细度 | INFO |
 
@@ -72,20 +73,20 @@ out/
 └── <镜像源站路径>/*.md
 ```
 
-## 里程碑（v0.1.0，全部完成）
+## 里程碑（v0.1.1，全部完成）
 
 - ✅ **M1** 静态 / SSR 端到端
 - ✅ **M2** LLM 规则分析 + 4 级降级链
-- ✅ **M3** 图片本地化 + bundle
-- ✅ **M4** 动态引擎（SPA / headless Chrome）
+- ✅ **M3** 图片本地化 + bundle + manifest 去重
+- ✅ **M4** 动态引擎（SPA / headless Chrome，可重复运行）
 - ✅ **M5** robots 合规 + 口径收尾 + 文档
 
-真实站点验证：DeepSeek API 中文文档端到端通过（静态 50 页 / 0 失败 / 图片本地化 0 死链；动态引擎 headless Chrome 渲染成功）。
+真实站点验证（DeepSeek API 中文文档）：全功能端到端通过 —— 静态 50 页 0 失败 + 12 图本地化 0 死链 + LLM DeepSeek API 实调成功（返回站点特定选择器 `.theme-doc-markdown`，优于 fallback）+ 动态引擎 headless Chrome 可重复渲染 + 坏链失败口径验证。
 
 ## 开发
 
 ```bash
-just check   # cargo fmt --check + clippy -D warnings + test
+just check   # cargo fmt --check + clippy -D warnings + test（69 单元 + 5 集成全绿）
 ```
 
 规格文档（SDD）见 `constitution.md` 与 `docs/specs/web2doc/`（constitution + spec + plan + tasks）。
