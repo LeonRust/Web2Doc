@@ -34,7 +34,7 @@ fn candidates() -> Vec<PathBuf> {
     .collect()
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
 fn candidates() -> Vec<PathBuf> {
     [
         "/usr/bin/google-chrome",
@@ -46,6 +46,25 @@ fn candidates() -> Vec<PathBuf> {
     .into_iter()
     .map(PathBuf::from)
     .collect()
+}
+
+#[cfg(target_os = "windows")]
+fn candidates() -> Vec<PathBuf> {
+    let mut v = Vec::new();
+    for base in [
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
+    ] {
+        v.push(PathBuf::from(base));
+    }
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        v.push(PathBuf::from(local).join(r"Google\Chrome\Application\chrome.exe"));
+        v.push(PathBuf::from(local).join(r"Chromium\Application\chrome.exe"));
+    }
+    v
 }
 
 /// 由 mode + 检测结果决策引擎（纯函数）。
