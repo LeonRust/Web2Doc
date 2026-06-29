@@ -190,3 +190,52 @@ async fn robots_disallow_excludes_page() {
     assert!(tmp.path().join("docs/a.md").exists());
     assert!(!tmp.path().join("docs/b.md").exists());
 }
+
+fn sitemap_with_bad_link(port: u16) -> String {
+    format!(
+        "<?xml version=\"1.0\"?><urlset>\
+         <url><loc>http://127.0.0.1:{port}/docs/a</loc></url>\
+         <url><loc>http://127.0.0.1:{port}/docs/b</loc></url>\
+         <url><loc>http://127.0.0.1:1/docs/c</loc></url>\
+         </urlset>"
+    )
+}
+
+fn start_server_with_bad_link() -> u16 {
+    let server = tiny_http::Server::http("127.0.0.1:0").expect("bind");
+    let port = server.server_addr().to_ip().expect("ip addr").port();
+    std::thread::spawn(move || {
+        for req in server.incoming_requests() {
+            let path = req.url().split('?').next().unwrap_or("").to_string();
+            let (status, body, ctype): (u16, String, &str) = match path.as_str() {
+                "/sitemap.xml" => (200, sitemap_with_bad_link(port), "application/xml"),
+                "/docs/a" => (200, doc_html("A", "/docs/b"), "text/html"),
+                "/docs/b" => (200, doc_html("B", "/docs/a"), "text/html"),
+                _ => (404, "nope".to_string(), "text/plain"),
+            };
+            let header =
+                tiny_http::Header::from_bytes(&b"Content-Type"[..], ctype.as_bytes()).unwrap();
+            let resp = tiny_http::Response::from_string(body)
+                .with_status_code(status)
+                .with_header(header);
+            let _ = req.respond(resp);
+        }
+    });
+    port
+}
+
+#[tokio::test]
+async fn broken_link_counts_as_failed_and_triggers_failure() {
+    let port = start_server_with_bad_link();
+    let tmp = tempfile::tempdir().unwrap();
+    let config = config_for(port, tmp.path().to_path_buf(), 500, false);
+    let fetcher = StaticFetcher::new().unwrap();
+
+    let report = pipeline::run(&fetcher, &config).await.unwrap();
+
+    assert_eq!(report.failed, 1, "c should fail on port 1");
+    assert!(report.failure_rate > 0.2);
+    assert!(report.is_failure(0.2));
+    assert_eq!(report.exit_code(0.2), 1);
+    assert_eq!(report.ok, 2, "a and b should still succeed");
+}

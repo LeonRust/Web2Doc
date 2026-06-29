@@ -1,6 +1,6 @@
 //! 编排：LLM 规则分析 → robots → discover → 阶段A（抓取+提取+缓存）→ 阶段B（下载图片+改写+转换+写盘）→ 索引/bundle + 报告。
 //!
-//! plan §2/§7。M1：静态引擎；M2：LLM 站点级一次规则分析（无 key 回退）；M3：图片本地化；M5：robots。
+//! plan §2/§7。M1：静态引擎；M2：LLM 站点级一次规则分析（无 key 回退）；M3：图片本地化 + manifest 去重；M5：robots。
 //! `std::sync::Mutex` 串行写 manifest（增量原子写支持续传）。失败隔离：单页失败不中断整体。
 
 use std::collections::BTreeMap;
@@ -179,7 +179,10 @@ fn build_manifest(
         truncated: discovery.truncated,
         nav_order: discovery.nav_order.clone(),
         pages,
-        assets_seen: BTreeMap::new(),
+        assets_seen: existing
+            .as_ref()
+            .map(|m| m.assets_seen.clone())
+            .unwrap_or_default(),
     }
 }
 
@@ -281,6 +284,7 @@ async fn stage_write(
             let out_dir = out_dir.clone();
             let page_map = page_map.clone();
             async move {
+                let seen_cache = { lock(&manifest).assets_seen.clone() };
                 let result = process_write(
                     http,
                     &cache_dir,
@@ -289,14 +293,18 @@ async fn stage_write(
                     &page_map,
                     &assets_dir,
                     &out_dir,
+                    &seen_cache,
                 )
                 .await;
                 let mut m = lock(&manifest);
                 if let Some(rec) = m.pages.get_mut(&key) {
                     match result {
-                        Ok(asset_rels) => {
+                        Ok((asset_rels, new_seen)) => {
                             rec.status = PageStatus::Written;
                             rec.assets = asset_rels;
+                            for (src, local) in new_seen {
+                                m.assets_seen.insert(src, local);
+                            }
                         }
                         Err(e) => {
                             rec.status = PageStatus::Failed;
@@ -310,7 +318,8 @@ async fn stage_write(
         .await;
 }
 
-/// 收尾单页：下载图片本地化 → 改写 → 转 MD → 写盘。返回已下载资源相对路径列表。
+/// 收尾单页：下载图片本地化 → 改写 → 转 MD → 写盘。返回 (已下载资源列表, 新增 assets_seen 映射)。
+#[allow(clippy::too_many_arguments)]
 async fn process_write(
     http: &reqwest::Client,
     cache_dir: &Path,
@@ -319,19 +328,28 @@ async fn process_write(
     page_map: &BTreeMap<String, String>,
     assets_dir: &Path,
     out_dir: &Path,
-) -> Result<Vec<String>> {
+    asset_seen_cache: &BTreeMap<String, String>,
+) -> Result<(Vec<String>, Vec<(String, String)>)> {
     let data = std::fs::read_to_string(cache_dir.join(cache_file))?;
     let ex: Extracted =
         serde_json::from_str(&data).map_err(|e| Error::Extract(format!("cache read: {e}")))?;
 
-    // 下载正文图片 → asset_map（src → 相对当前页本地路径），失败则不映射（rewrite 保持绝对）。
+    // 下载正文图片 → asset_map（src → 相对当前页本地路径），失败则不映射。
+    // 先查 manifest 级去重缓存（asset_seen_cache），命中则跳过下载（避免跨页重复）。
     let mut asset_map: BTreeMap<String, String> = BTreeMap::new();
     let mut asset_rels: Vec<String> = Vec::new();
+    let mut new_seen: Vec<(String, String)> = Vec::new();
     for img in &ex.images {
+        if let Some(local) = asset_seen_cache.get(img) {
+            asset_map.insert(img.clone(), urlx::relative_path(rel, local));
+            asset_rels.push(local.clone());
+            continue;
+        }
         if let Ok(name) = assets::download_image(http, img, assets_dir).await {
             let local = format!("assets/{name}");
             asset_map.insert(img.clone(), urlx::relative_path(rel, &local));
-            asset_rels.push(local);
+            asset_rels.push(local.clone());
+            new_seen.push((img.clone(), local));
         }
     }
 
@@ -343,7 +361,7 @@ async fn process_write(
         format!("# {}\n\n{}", ex.title.trim(), body)
     };
     writer::write_markdown(out_dir, rel, &md)?;
-    Ok(asset_rels)
+    Ok((asset_rels, new_seen))
 }
 
 fn cache_name(key: &str) -> String {
