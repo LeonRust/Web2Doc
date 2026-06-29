@@ -1,6 +1,6 @@
-//! 编排：robots → discover → 阶段A（抓取+提取+缓存）→ 阶段B（下载图片+改写+转换+写盘）→ 索引/bundle + 报告。
+//! 编排：LLM 规则分析 → robots → discover → 阶段A（抓取+提取+缓存）→ 阶段B（下载图片+改写+转换+写盘）→ 索引/bundle + 报告。
 //!
-//! plan §2/§7。M1：静态引擎、回退规则；M3：图片本地化；M5：robots 合规 + 警告聚合。
+//! plan §2/§7。M1：静态引擎；M2：LLM 站点级一次规则分析（无 key 回退）；M3：图片本地化；M5：robots。
 //! `std::sync::Mutex` 串行写 manifest（增量原子写支持续传）。失败隔离：单页失败不中断整体。
 
 use std::collections::BTreeMap;
@@ -13,12 +13,14 @@ use futures::stream::{self, StreamExt};
 use url::Url;
 
 use crate::assets;
+use crate::cli::Mode;
 use crate::config::Config;
 use crate::convert;
 use crate::discover::{self, Discovery};
 use crate::error::{Error, Result};
 use crate::extract::{self, ExtractOutcome, Extracted};
 use crate::fetcher::Fetcher;
+use crate::llm::{self, LlmClient};
 use crate::report::RunReport;
 use crate::rewrite;
 use crate::robots::RobotsPolicy;
@@ -33,16 +35,17 @@ pub async fn run<F: Fetcher + Sync>(fetcher: &F, config: &Config) -> Result<RunR
         let _ = std::fs::remove_dir_all(config.out_dir.join(".cache"));
     }
     let existing = Manifest::load(&config.out_dir);
-
-    let rules = RuleSet::fallback(); // M1：无 LLM，使用回退规则
     let prefixes = effective_prefixes(config);
 
-    // robots 拉取 + 图片下载共用的 HTTP 客户端（与页面抓取引擎解耦）。
+    // robots 拉取 / 图片下载 / LLM 共用的 HTTP 客户端（与页面抓取引擎解耦）。
     let http = reqwest::Client::builder()
         .user_agent(concat!("web2doc/", env!("CARGO_PKG_VERSION")))
         .timeout(Duration::from_secs(30))
         .build()
         .map_err(|e| Error::Fetch(format!("http client: {e}")))?;
+
+    // M2：有 key → LLM 站点级一次规则分析；无 key / 空壳 → 回退默认（A6 / S7 / N-5）。
+    let rules = analyze_rules(fetcher, &http, config).await;
 
     let robots = RobotsPolicy::load(&http, &config.start_url, config.ignore_robots).await;
 
@@ -77,12 +80,35 @@ pub async fn run<F: Fetcher + Sync>(fetcher: &F, config: &Config) -> Result<RunR
     if config.bundle {
         writer::write_bundle(&config.out_dir, &guard)?;
     }
-    let warnings = collect_warnings(&discovery, &guard);
+
+    let mut warnings = collect_warnings(&discovery, &guard);
+    if rules.looks_like_spa && config.mode == Mode::Static {
+        warnings.push("站点疑似 SPA，建议使用 --mode dynamic 获取完整内容".to_string());
+    }
     Ok(RunReport::build(&guard, discovery.tasks.len(), warnings))
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// M2：LLM 分析首页得出规则集（站点级一次）；无 key / 渲染失败 / 静态空壳 → 回退默认。
+async fn analyze_rules<F: Fetcher>(
+    fetcher: &F,
+    http: &reqwest::Client,
+    config: &Config,
+) -> RuleSet {
+    let Some(key) = &config.api_key else {
+        return RuleSet::fallback();
+    };
+    let Ok(home) = fetcher.render(&config.start_url).await else {
+        return RuleSet::fallback();
+    };
+    if config.mode == Mode::Static && llm::looks_empty(&home.html) {
+        return RuleSet::fallback(); // 静态空壳短路（N-5）
+    }
+    let client = LlmClient::new(http.clone(), &config.base_url, &config.model, key.expose());
+    client.analyze(&home.html).await
 }
 
 fn collect_warnings(discovery: &Discovery, manifest: &Manifest) -> Vec<String> {

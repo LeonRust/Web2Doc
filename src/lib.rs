@@ -10,6 +10,7 @@ pub mod discover;
 pub mod error;
 pub mod extract;
 pub mod fetcher;
+pub mod llm;
 pub mod obs;
 pub mod pipeline;
 pub mod report;
