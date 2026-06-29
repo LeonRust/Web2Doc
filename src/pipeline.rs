@@ -99,8 +99,10 @@ async fn analyze_rules<F: Fetcher>(
     config: &Config,
 ) -> RuleSet {
     let Some(key) = &config.api_key else {
+        tracing::info!("未配置 LLM key，使用回退默认规则");
         return RuleSet::fallback();
     };
+    tracing::info!(model = %config.model, "启用 LLM 站点级规则分析");
     let Ok(home) = fetcher.render(&config.start_url).await else {
         return RuleSet::fallback();
     };

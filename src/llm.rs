@@ -39,8 +39,20 @@ impl LlmClient {
     /// 分析首页 → 经校验的 `RuleSet`（含完整降级链）。仅 1 次 LLM 调用。
     pub async fn analyze(&self, home_html: &str) -> RuleSet {
         match self.call(&skeleton(home_html)).await {
-            Ok(content) => validate_ruleset(parse_ruleset(&content), home_html),
-            Err(_) => RuleSet::fallback(),
+            Ok(content) => {
+                let rules = validate_ruleset(parse_ruleset(&content), home_html);
+                tracing::info!(
+                    content_selector = %rules.content_selector,
+                    exclude_count = rules.exclude_selectors.len(),
+                    looks_like_spa = rules.looks_like_spa,
+                    "LLM 规则分析成功"
+                );
+                rules
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "LLM 调用失败，回退默认规则");
+                RuleSet::fallback()
+            }
         }
     }
 

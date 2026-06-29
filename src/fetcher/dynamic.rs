@@ -21,8 +21,11 @@ pub struct DynamicFetcher {
 impl DynamicFetcher {
     /// 启动 headless Chrome（指定可执行路径）。
     pub async fn launch(chrome_path: &Path) -> Result<Self> {
+        // 唯一 user-data-dir，避免默认固定 profile 的 SingletonLock 冲突（多次运行 — constitution §8）。
+        let user_data = std::env::temp_dir().join(format!("web2doc-chrome-{}", std::process::id()));
         let config = BrowserConfig::builder()
             .chrome_executable(chrome_path)
+            .user_data_dir(&user_data)
             .no_sandbox()
             .build()
             .map_err(|e| Error::Fetch(format!("browser config: {e}")))?;
