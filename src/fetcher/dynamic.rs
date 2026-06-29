@@ -48,6 +48,8 @@ impl DynamicFetcher {
             .await
             .map_err(|e| Error::Fetch(format!("{url}: new_page: {e}")))?;
         let _ = page.wait_for_navigation().await;
+        // SPA 渲染缓冲：异步加载内容需要额外时间完成。
+        tokio::time::sleep(Duration::from_millis(200)).await;
         let html = page
             .content()
             .await

@@ -105,12 +105,24 @@ pub fn looks_empty(html: &str) -> bool {
     text.split_whitespace().count() < 30
 }
 
-/// 首页结构骨架（截断控 token）。M2 简化为按字符截断。
+/// 首页结构骨架：剥离 script/style/noscript 块并截断，保留 HTML 结构控 token。
 fn skeleton(html: &str) -> String {
-    if html.len() <= MAX_INPUT_CHARS {
-        html.to_string()
+    let mut out = html.to_string();
+    for tag in ["script", "style", "noscript"] {
+        let open = format!("<{tag}");
+        let close = format!("</{tag}>");
+        while let Some(start) = out.find(&open) {
+            if let Some(end) = out[start..].find(&close) {
+                out.replace_range(start..start + end + close.len(), "");
+            } else {
+                break;
+            }
+        }
+    }
+    if out.len() <= MAX_INPUT_CHARS {
+        out
     } else {
-        html.chars().take(MAX_INPUT_CHARS).collect()
+        out.chars().take(MAX_INPUT_CHARS).collect()
     }
 }
 

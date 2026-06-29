@@ -224,6 +224,7 @@ async fn stage_fetch<F: Fetcher + Sync>(
                         Ok(Some(cache_file)) => {
                             rec.status = PageStatus::Fetched;
                             rec.cache = Some(cache_file);
+                            tracing::debug!(url = %key, "fetched");
                         }
                         Ok(None) => rec.status = PageStatus::Excluded,
                         Err(e) => {
@@ -306,19 +307,26 @@ async fn stage_write(
                 )
                 .await;
                 let mut m = lock(&manifest);
-                if let Some(rec) = m.pages.get_mut(&key) {
+                let seens_to_add = if let Some(rec) = m.pages.get_mut(&key) {
                     match result {
                         Ok((asset_rels, new_seen)) => {
                             rec.status = PageStatus::Written;
                             rec.assets = asset_rels;
-                            for (src, local) in new_seen {
-                                m.assets_seen.insert(src, local);
-                            }
+                            tracing::debug!(url = %key, assets = rec.assets.len(), "written");
+                            Some(new_seen)
                         }
                         Err(e) => {
                             rec.status = PageStatus::Failed;
                             rec.error = Some(e.to_string());
+                            None
                         }
+                    }
+                } else {
+                    None
+                };
+                if let Some(new_seen) = seens_to_add {
+                    for (src, local) in new_seen {
+                        m.assets_seen.insert(src, local);
                     }
                 }
                 let _ = m.save_atomic(&out_dir);

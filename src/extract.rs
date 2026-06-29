@@ -35,18 +35,19 @@ pub enum ExtractOutcome {
 /// 从渲染后的 HTML 提取正文。`url` 用于将正文相对链接绝对化。
 /// readability 失败或内容过短时回退为 scraper 直接提取正文容器。
 pub fn extract(html: &str, url: &Url, _rules: &RuleSet) -> ExtractOutcome {
-    let mut readability = match Readability::new(html, Some(url.as_str()), None) {
+    let html = expand_tab_content(html);
+    let mut readability = match Readability::new(html.as_str(), Some(url.as_str()), None) {
         Ok(r) => r,
-        Err(_) => return fallback_extract(html, url),
+        Err(_) => return fallback_extract(&html, url),
     };
     let article = match readability.parse() {
         Ok(a) => a,
-        Err(_) => return fallback_extract(html, url),
+        Err(_) => return fallback_extract(&html, url),
     };
 
     let text_len = article.text_content.trim().chars().count();
     if text_len < MIN_CONTENT_CHARS {
-        return fallback_extract(html, url);
+        return fallback_extract(&html, url);
     }
 
     let content_html = article.content.to_string();
@@ -59,6 +60,11 @@ pub fn extract(html: &str, url: &Url, _rules: &RuleSet) -> ExtractOutcome {
         images,
         embeds,
     }))
+}
+
+/// 去掉隐藏属性，让 readability 保留所有 tab / 折叠内容。
+fn expand_tab_content(html: &str) -> String {
+    html.replace(" hidden=\"\"", "").replace(" hidden>", ">")
 }
 
 /// readability 失败 / 内容过短时的回退：直接用 scraper 从 body 取 inner HTML（避免逐候选早停丢失 <pre>）。
@@ -168,5 +174,13 @@ mod tests {
             ExtractOutcome::Excluded(_) => {}
             ExtractOutcome::Content(_) => panic!("shell should be excluded"),
         }
+    }
+
+    #[test]
+    fn tabpanel_hidden_is_expanded() {
+        let html = r#"<div role="tabpanel" hidden><pre>code</pre></div>"#;
+        let got = expand_tab_content(html);
+        assert!(!got.contains("hidden"), "hidden should be removed: {got}");
+        assert!(got.contains(r#"role="tabpanel""#));
     }
 }
