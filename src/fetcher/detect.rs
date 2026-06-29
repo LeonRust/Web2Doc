@@ -50,21 +50,34 @@ fn candidates() -> Vec<PathBuf> {
 
 #[cfg(target_os = "windows")]
 fn candidates() -> Vec<PathBuf> {
+    windows_candidates(|k| std::env::var(k).ok())
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn windows_candidates(env: impl Fn(&str) -> Option<String>) -> Vec<PathBuf> {
+    let env = |k: &str| env(k).filter(|s| !s.is_empty());
+    let pf = env("ProgramFiles").unwrap_or_else(|| r"C:\Program Files".to_string());
+    let pf86 = env("ProgramFiles(x86)").unwrap_or_else(|| r"C:\Program Files (x86)".to_string());
+    let local = env("LOCALAPPDATA");
     let mut v = Vec::new();
-    for base in [
-        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
-        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-        r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
+    for (dir, exe) in [
+        (r"Google\Chrome\Application", "chrome.exe"),
+        (r"Chromium\Application", "chrome.exe"),
+        (r"Microsoft\Edge\Application", "msedge.exe"),
+        (r"BraveSoftware\Brave-Browser\Application", "brave.exe"),
     ] {
-        v.push(PathBuf::from(base));
-    }
-    if let Ok(local) = std::env::var("LOCALAPPDATA") {
-        v.push(PathBuf::from(local).join(r"Google\Chrome\Application\chrome.exe"));
-        v.push(PathBuf::from(local).join(r"Chromium\Application\chrome.exe"));
+        v.push(PathBuf::from(&pf).join(dir).join(exe));
+        v.push(PathBuf::from(&pf86).join(dir).join(exe));
+        if let Some(local) = &local {
+            v.push(PathBuf::from(local).join(dir).join(exe));
+        }
     }
     v
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+fn candidates() -> Vec<PathBuf> {
+    Vec::new()
 }
 
 /// 由 mode + 检测结果决策引擎（纯函数）。
@@ -113,7 +126,64 @@ mod tests {
     }
 
     #[test]
+    #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
     fn candidates_non_empty() {
         assert!(!candidates().is_empty());
+    }
+
+    #[test]
+    fn windows_candidates_use_injected_env_and_cover_per_user_brave() {
+        let env = |k: &str| match k {
+            "ProgramFiles" => Some(r"D:\PF".to_string()),
+            "ProgramFiles(x86)" => Some(r"D:\PF86".to_string()),
+            "LOCALAPPDATA" => Some(r"D:\Users\me\AppData\Local".to_string()),
+            _ => None,
+        };
+        let paths: Vec<String> = windows_candidates(env)
+            .iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        assert!(paths.iter().any(|p| p.contains(r"D:\PF")));
+        assert!(paths.iter().any(|p| p.contains(r"D:\PF86")));
+        assert!(paths.iter().all(|p| !p.contains(r"C:\Program Files")));
+        assert!(paths.iter().any(|p| {
+            p.contains(r"AppData\Local")
+                && p.contains(r"BraveSoftware\Brave-Browser\Application")
+                && p.contains("brave.exe")
+        }));
+    }
+
+    #[test]
+    fn windows_candidates_fall_back_to_default_program_files() {
+        let paths: Vec<String> = windows_candidates(|_| None)
+            .iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        assert!(!paths.is_empty());
+        assert!(paths
+            .iter()
+            .any(|p| p.contains(r"C:\Program Files") && p.contains("chrome.exe")));
+        assert!(paths.iter().all(|p| !p.contains("AppData")));
+    }
+
+    #[test]
+    fn windows_candidates_treat_empty_env_as_absent() {
+        let paths: Vec<String> = windows_candidates(|k| match k {
+            "ProgramFiles" | "ProgramFiles(x86)" | "LOCALAPPDATA" => Some(String::new()),
+            _ => None,
+        })
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+        assert!(paths.iter().any(|p| p.contains(r"C:\Program Files")));
+        assert!(paths.iter().all(|p| !p.contains("AppData")));
+    }
+
+    #[test]
+    #[ignore = "环境相关：需本机安装 Chrome 系浏览器；手动 `cargo test -- --ignored` 验证 Success Metric #1"]
+    fn detect_chrome_on_real_host() {
+        let found = detect_chrome(None);
+        eprintln!("detect_chrome(None) = {found:?}");
+        assert!(found.is_some(), "本机未检测到 Chrome 系浏览器");
     }
 }
