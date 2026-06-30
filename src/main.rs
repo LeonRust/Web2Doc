@@ -9,8 +9,8 @@ use web2doc::{obs, pipeline};
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    obs::init(cli.verbose);
     let config = Config::from_cli(cli)?;
-    obs::init(config.verbose);
     tracing::info!(
         target_url = %config.start_url,
         "web2doc {} starting",

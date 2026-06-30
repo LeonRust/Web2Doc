@@ -70,7 +70,7 @@ web2doc https://api-docs.deepseek.com/zh-cn/ --max-pages 50 -o ./docs
 web2doc https://spa-docs.example.com --mode dynamic
 
 # 启用 LLM 分析 + 合并产物（投喂 AI）
-export OPENAI_API_KEY=sk-...
+export LLM_API_KEY=sk-...
 web2doc https://docs.example.com --bundle -o ./ai-context
 ```
 
@@ -181,10 +181,12 @@ web2doc <URL> [选项]
 
 ### LLM 规则分析
 
+LLM 三项配置（端点 / 模型 / 密钥）支持多种来源，优先级 **CLI > 环境变量 / .env > 配置文件 > 默认**（API Key 仅 .env / 环境变量 / 配置文件，不接受命令行明文）。
+
 | 选项 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `--base-url <URL>` | string | `https://api.deepseek.com` | LLM 端点（OpenAI 兼容） |
-| `--model <NAME>` | string | `deepseek-chat` | LLM 模型名 |
+| `--model <NAME>` | string | `deepseek-v4-flash` | LLM 模型名 |
 
 ### 日志
 
@@ -195,13 +197,41 @@ web2doc <URL> [选项]
 
 ---
 
-## 环境变量
+## 环境变量 / .env
+
+LLM 配置支持三种环境变量，均可通过 shell 或项目根目录 `.env` 文件设置（`.env` 不覆盖已存在的环境变量）：
 
 | 变量 | 说明 |
 | --- | --- |
-| `OPENAI_API_KEY` | LLM API Key；设置后才启用 LLM 规则分析 |
-| `DEEPSEEK_API_KEY` | 兼容别名 |
+| `LLM_BASE_URL` | LLM 端点（优先级高于配置文件，低于 `--base-url`） |
+| `LLM_MODEL` | LLM 模型名（优先级高于配置文件，低于 `--model`） |
+| `LLM_API_KEY` | LLM API Key（优先级高于配置文件）；设置后才启用 LLM 规则分析 |
 | `RUST_LOG` | 覆盖默认日志级别（例 `RUST_LOG=web2doc=debug`） |
+
+`.env` 示例：
+```bash
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL=deepseek-v4-flash
+LLM_API_KEY=sk-...
+```
+
+## 配置文件
+
+可在用户配置目录放置 `web2doc/config.toml` 持久化 LLM 设置（优先级低于 CLI 与环境变量）：
+
+| 平台 | 路径 |
+| --- | --- |
+| **macOS / Linux** | `~/.config/web2doc/config.toml`（遵循 `$XDG_CONFIG_HOME`） |
+| **Windows** | `%APPDATA%\web2doc\config.toml` |
+
+```toml
+[llm]
+base_url = "https://api.openai.com/v1"
+model = "gpt-4o"
+api_key = "sk-..."
+```
+
+所有字段均可省略；缺失项回退到默认值（`base_url=https://api.deepseek.com`、`model=deepseek-v4-flash`）。文件不存在或解析失败均不影响抓取（仅 LLM 规则分析降级为内置默认规则）。
 
 ---
 
@@ -230,7 +260,7 @@ web2doc https://docs.example.com --prefix /api/ --max-pages 100
 ### 场景 4：启用 LLM + Bundle（投喂 AI 最优方案）
 
 ```bash
-export OPENAI_API_KEY=sk-...
+export LLM_API_KEY=sk-...
 web2doc https://docs.example.com --bundle --max-pages 200 -o ./ai-context
 
 # 产物：./ai-context/_bundle.md（全文单文件）
@@ -310,7 +340,7 @@ out/
 
 | 级别 | 场景 | 行为 |
 | --- | --- | --- |
-| 1 | 无 `OPENAI_API_KEY` | 使用内置默认规则 |
+| 1 | 无 `LLM_API_KEY` | 使用内置默认规则 |
 | 2 | LLM 返回非 JSON | 使用内置默认规则 |
 | 3 | CSS 选择器非法 | 剔除非法选择器，其余保留 |
 | 4 | content_selector 首页 0 命中 | 回退到默认候选链 |

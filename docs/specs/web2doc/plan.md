@@ -105,7 +105,7 @@ web2doc <URL>
   --mode <auto|static|dynamic>  抓取引擎       默认 auto
   --chrome-path <PATH>     指定 Chrome         默认 自动检测
   --base-url <URL>         LLM 端点            默认 https://api.deepseek.com
-  --model <NAME>           LLM 模型            默认 deepseek-chat
+  --model <NAME>           LLM 模型            默认 deepseek-v4-flash
   --max-failure-rate <F>   失败率阈值          默认 0.20  (S9)
   --bundle                 额外输出合并文件      默认 关闭  (C8)
   --ignore-robots          忽略 robots.txt     默认 关闭(尊重) (C9)
@@ -113,8 +113,12 @@ web2doc <URL>
   -v/-vv                   日志级别
 ```
 
-- 密钥仅经环境变量 `OPENAI_API_KEY`（兼容 `DEEPSEEK_API_KEY`）注入；**绝不**接受命令行明文 key（constitution §5）。
-- `config::Config` 由 CLI + 环境变量归一后冻结，向下注入；业务模块不再读 env。
+- **LLM 三项配置（端点 / 模型 / 密钥）来源优先级**：CLI > 环境变量（含 `.env`）> 配置文件 > 默认。
+  - 端点 / 模型：`--base-url` `--model` → `LLM_BASE_URL` `LLM_MODEL` → 配置文件 `[llm]` → 默认（`https://api.deepseek.com` / `deepseek-v4-flash`）。
+  - 密钥：`LLM_API_KEY` → 配置文件 `[llm].api_key`；**绝不**接受命令行明文 key（constitution §5）。
+- `.env`：启动时由 `dotenvy` 加载 CWD 下 `.env`（若存在），**不覆盖**已存在的环境变量；随后按上述优先级解析。
+- 配置文件：`<config_dir>/web2doc/config.toml`（Windows = `%APPDATA%`；macOS / Linux 统一遵循 XDG = `$XDG_CONFIG_HOME` 否则 `~/.config`），仅含 `[llm]` 段，全字段可选；不存在 / 解析失败均不影响抓取（LLM 降级回退规则）。
+- `config::Config` 由 CLI + 环境变量（含 `.env`）+ 配置文件归一后冻结，向下注入；业务模块不再读 env / 文件。
 - 续传为默认行为（检测 `<out>/manifest.json`）；`--fresh` 显式忽略并重抓（清空 `.cache` 与 manifest，并全量重算映射，T-3）。
 
 ---
@@ -350,7 +354,7 @@ trait Fetcher {
 
 1. **MVP 范围**：✅ M1（静态端到端）为第一个可交付里程碑。
 2. **依赖取舍**：✅ `htmd` + `dom_smoothie` 主选，实现期验证，不行切备选。
-3. **默认 LLM 端点**：✅ `https://api.deepseek.com` / `deepseek-chat`。
+3. **默认 LLM 端点**：✅ `https://api.deepseek.com` / `deepseek-v4-flash`（端点 / 模型 / 密钥支持 CLI > env > 配置文件 > 默认覆盖，密钥仅 env / 文件）。
 4. **资源命名**：✅ `sha256(规范化绝对 url)[..16]+ext`。
 5. **robots**：✅ 默认尊重 `robots.txt` + `--ignore-robots` 逃生口。
 6. **max-pages 截断口径**：✅ baseline > max-pages 标 Partial、不判失败、透明提示（§2.1）。

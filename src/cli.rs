@@ -65,13 +65,13 @@ pub struct Cli {
     #[arg(long)]
     pub chrome_path: Option<PathBuf>,
 
-    /// LLM 端点（OpenAI 兼容）。
-    #[arg(long, default_value = "https://api.deepseek.com")]
-    pub base_url: String,
+    /// LLM 端点（OpenAI 兼容）。优先级：CLI > env(LLM_BASE_URL) / .env > 配置文件 > 默认 https://api.deepseek.com。
+    #[arg(long)]
+    pub base_url: Option<String>,
 
-    /// LLM 模型名。
-    #[arg(long, default_value = "deepseek-chat")]
-    pub model: String,
+    /// LLM 模型名。优先级：CLI > env(LLM_MODEL) / .env > 配置文件 > 默认 deepseek-v4-flash。
+    #[arg(long)]
+    pub model: Option<String>,
 
     /// 失败率阈值（超过判整次失败）。
     #[arg(long, default_value_t = 0.20)]
@@ -110,8 +110,8 @@ mod tests {
         assert_eq!(cli.concurrency, 4);
         assert_eq!(cli.delay_ms, 500);
         assert_eq!(cli.mode, Mode::Auto);
-        assert_eq!(cli.base_url, "https://api.deepseek.com");
-        assert_eq!(cli.model, "deepseek-chat");
+        assert_eq!(cli.base_url, None);
+        assert_eq!(cli.model, None);
         assert!(!cli.bundle);
         assert_eq!(cli.format, OutputFormat::Md);
         assert!(!cli.ignore_robots);
@@ -141,5 +141,20 @@ mod tests {
     fn verbose_counts() {
         let cli = Cli::try_parse_from(["web2doc", "https://x.com/", "-vv"]).unwrap();
         assert_eq!(cli.verbose, 2);
+    }
+
+    #[test]
+    fn llm_flags_parse_into_some() {
+        let cli = Cli::try_parse_from([
+            "web2doc",
+            "https://x.com/docs/",
+            "--base-url",
+            "https://api.openai.com/v1",
+            "--model",
+            "gpt-4o",
+        ])
+        .unwrap();
+        assert_eq!(cli.base_url.as_deref(), Some("https://api.openai.com/v1"));
+        assert_eq!(cli.model.as_deref(), Some("gpt-4o"));
     }
 }

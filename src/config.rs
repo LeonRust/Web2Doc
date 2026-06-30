@@ -1,12 +1,23 @@
-//! 运行配置：由 CLI + 环境变量归一后冻结，向下注入（constitution §3）。
+//! 运行配置：由 CLI + 环境变量 + 配置文件归一后冻结，向下注入（constitution §3）。
 //! 业务模块不直接读环境变量。
 
 use std::path::PathBuf;
 
+use serde::Deserialize;
 use url::Url;
 
 use crate::cli::{Cli, Mode};
 use crate::error::{Error, Result};
+
+/// 默认 LLM 端点（OpenAI 兼容协议）。
+const DEFAULT_BASE_URL: &str = "https://api.deepseek.com";
+/// 默认 LLM 模型名。
+const DEFAULT_MODEL: &str = "deepseek-v4-flash";
+
+/// 加载 `.env` 文件（如果 CWD 中存在），不会覆盖已设置的环境变量。
+fn load_dotenv_file() {
+    let _ = dotenvy::dotenv();
+}
 
 /// 敏感字符串包装：`Debug` 输出脱敏，防止密钥进入日志 / 产物（constitution §5）。
 #[derive(Clone)]
@@ -25,6 +36,66 @@ impl std::fmt::Debug for Secret {
     }
 }
 
+/// 配置文件中的 LLM 段（`~/.config/web2doc/config.toml` > `[llm]`）。
+#[derive(Debug, Clone, Default, Deserialize)]
+struct LlmFileConfig {
+    #[serde(rename = "base_url")]
+    base_url: Option<String>,
+    model: Option<String>,
+    api_key: Option<String>,
+}
+
+/// 配置文件顶层结构。
+#[derive(Debug, Clone, Default, Deserialize)]
+struct FileConfig {
+    #[serde(default)]
+    llm: LlmFileConfig,
+}
+
+/// 读取环境变量，过滤空串后返回 `Some(value)`，变量未设置或为空时返回 `None`。
+fn env_nonempty(var: &str) -> Option<String> {
+    std::env::var(var).ok().filter(|v| !v.is_empty())
+}
+
+/// 全局配置目录基路径。
+///
+/// - **Windows**：`%APPDATA%`（`dirs::config_dir()`）。
+/// - **macOS / Linux**：统一遵循 XDG —— `$XDG_CONFIG_HOME`（绝对路径时）否则 `~/.config`。
+fn config_base_dir() -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        dirs::config_dir()
+    }
+    #[cfg(not(windows))]
+    {
+        std::env::var_os("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute())
+            .or_else(|| dirs::home_dir().map(|h| h.join(".config")))
+    }
+}
+
+/// 从全局配置目录的 `web2doc/config.toml` 加载配置文件（路径见 [`config_base_dir`]）。
+/// 文件不存在时静默返回 `None`，解析失败时输出 warning 并忽略。
+fn load_file_config() -> Option<FileConfig> {
+    let config_dir = config_base_dir()?;
+    let path = config_dir.join("web2doc").join("config.toml");
+    match std::fs::read_to_string(&path) {
+        Ok(content) => match toml::from_str::<FileConfig>(&content) {
+            Ok(cfg) => Some(cfg),
+            Err(e) => {
+                tracing::warn!(path = %path.display(), error = %e, "配置文件解析失败，已忽略");
+                None
+            }
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => {
+            tracing::warn!(path = %path.display(), error = %e, "读取配置文件失败，已忽略");
+            None
+        }
+    }
+}
+
 /// 冻结后的运行配置。
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -38,7 +109,9 @@ pub struct Config {
     pub delay_ms: u64,
     pub mode: Mode,
     pub chrome_path: Option<PathBuf>,
+    /// LLM 端点（OpenAI 兼容）。优先级：CLI > env(LLM_BASE_URL) > 配置文件 > 默认。
     pub base_url: String,
+    /// LLM 模型名。优先级：CLI > env(LLM_MODEL) > 配置文件 > 默认。
     pub model: String,
     pub max_failure_rate: f64,
     pub bundle: bool,
@@ -46,19 +119,38 @@ pub struct Config {
     pub ignore_robots: bool,
     pub fresh: bool,
     pub verbose: u8,
-    /// LLM API Key，仅来自环境变量（`OPENAI_API_KEY`，兼容 `DEEPSEEK_API_KEY`）。
+    /// LLM API Key。优先级：env(LLM_API_KEY) / .env > 配置文件。
     pub api_key: Option<Secret>,
 }
 
 impl Config {
-    /// 从 CLI 与环境变量归一构建配置。
+    /// 从 CLI、环境变量、配置文件归一构建配置。
+    ///
+    /// LLM 三项（base_url / model / api_key）优先级：CLI > 环境变量 > 配置文件 > 默认。
     pub fn from_cli(cli: Cli) -> Result<Self> {
         let start_url =
             Url::parse(&cli.url).map_err(|e| Error::Url(format!("{}: {e}", cli.url)))?;
 
-        let api_key = std::env::var("OPENAI_API_KEY")
-            .or_else(|_| std::env::var("DEEPSEEK_API_KEY"))
-            .ok()
+        load_dotenv_file();
+        let file = load_file_config().unwrap_or_default();
+
+        let base_url = cli
+            .base_url
+            .filter(|v| !v.is_empty())
+            .or_else(|| env_nonempty("LLM_BASE_URL"))
+            .or(file.llm.base_url)
+            .unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
+
+        let model = cli
+            .model
+            .filter(|v| !v.is_empty())
+            .or_else(|| env_nonempty("LLM_MODEL"))
+            .or(file.llm.model)
+            .unwrap_or_else(|| DEFAULT_MODEL.to_string());
+
+        // 密钥不接受命令行明文（constitution §5）：仅环境变量 / .env / 配置文件。
+        let api_key = env_nonempty("LLM_API_KEY")
+            .or(file.llm.api_key)
             .filter(|k| !k.is_empty())
             .map(Secret);
 
@@ -72,8 +164,8 @@ impl Config {
             delay_ms: cli.delay_ms,
             mode: cli.mode,
             chrome_path: cli.chrome_path,
-            base_url: cli.base_url,
-            model: cli.model,
+            base_url,
+            model,
             max_failure_rate: cli.max_failure_rate,
             bundle: cli.bundle,
             format: cli.format,
@@ -101,12 +193,28 @@ mod tests {
         assert_eq!(c.start_url.host_str(), Some("example.com"));
         assert_eq!(c.max_pages, 500);
         assert_eq!(c.base_url, "https://api.deepseek.com");
+        assert_eq!(c.model, "deepseek-v4-flash");
     }
 
     #[test]
     fn invalid_url_errors() {
         let err = Config::from_cli(parse(&["web2doc", "not a url"])).unwrap_err();
         assert!(matches!(err, Error::Url(_)));
+    }
+
+    #[test]
+    fn cli_overrides_llm_defaults() {
+        let c = Config::from_cli(parse(&[
+            "web2doc",
+            "https://x.com/docs/",
+            "--base-url",
+            "https://api.openai.com/v1",
+            "--model",
+            "gpt-4o",
+        ]))
+        .unwrap();
+        assert_eq!(c.base_url, "https://api.openai.com/v1");
+        assert_eq!(c.model, "gpt-4o");
     }
 
     #[test]

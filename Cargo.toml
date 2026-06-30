@@ -15,7 +15,9 @@ publish = false
 anyhow = "1"
 chromiumoxide = "0.9.1"
 clap = { version = "4", features = ["derive"] }
+dirs = "5"
 dom_smoothie = "0.18.0"
+dotenvy = "0.15"
 futures = "0.3.32"
 htmd = "0.5.4"
 lol_html = "3.0.0"
@@ -28,6 +30,7 @@ sha2 = "0.11.0"
 texting_robots = "0.2.2"
 thiserror = "2"
 tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "time"] }
+toml = { version = "0.8", default-features = false, features = ["parse"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 url = "2"

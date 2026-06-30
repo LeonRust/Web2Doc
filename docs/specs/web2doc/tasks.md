@@ -99,7 +99,7 @@
 | --- | --- | --- | --- | --- | --- |
 | M5.1 | robots：拉取/解析(texting_robots)、`is_allowed`、移出 baseline + warning、`--ignore-robots` 短路 | M1.5,M1.9b | `src/robots.rs` | 单测：Allow/Disallow、ignore 短路 | ◻ |
 | M5.2 | 覆盖率/Partial/失败率口径最终收尾（baseline 含 robots 扣除补齐 R-5；RunReport 完整呈现 + 警告清单聚合） | M1.15,M5.1 | `src/report.rs` | A7/A10 度量与退出码正确；S1 达 spec §2.1 完整口径 | ◻ |
-| M5.3 | 文档收尾：`README.md`(用法/示例/`OPENAI_API_KEY`/`--mode` 说明)、`--help` 文案 | 全部 | `README.md` | 按 README 可独立跑通 M1 场景 | ◻ |
+| M5.3 | 文档收尾：`README.md`(用法/示例/`LLM_API_KEY`/`--mode` 说明)、`--help` 文案 | 全部 | `README.md` | 按 README 可独立跑通 M1 场景 | ◻ |
 | M5.4 | 验收集成测试：A7(失败口径)、A9(robots)、A10(Partial 截断) | M5.1,M5.2 | `tests/acceptance.rs` | 三项验收用例绿 | ◻ |
 
 ---
