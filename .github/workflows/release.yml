@@ -1,0 +1,60 @@
+name: Release
+
+# 推送 vX.Y.Z tag 到 GitHub 即触发：自动多平台编译 + 生成 notes + 上传附件。
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write # 创建 Release / 上传附件需要写权限
+
+jobs:
+  # 1) 按 Conventional Commits 自动生成 release notes 并创建 Release
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # git-cliff 需要完整历史与 tag
+      - name: 生成 release notes（conventional commits）
+        id: cliff
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --latest --strip header
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body: ${{ steps.cliff.outputs.content }}
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          draft: false
+
+  # 2) 多架构 / 多系统编译，产物作为附件上传到上面的 Release
+  upload-assets:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-apple-darwin # macOS Intel
+            os: macos-13
+          - target: aarch64-apple-darwin # macOS Apple Silicon
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      # aws-lc-sys（rustls 默认后端）在 Windows 构建依赖 NASM（沿用 ci.yml）
+      - if: runner.os == 'Windows'
+        uses: ilammy/setup-nasm@v1
+      - name: 编译并上传二进制（含 SHA256）
+        uses: taiki-e/upload-rust-binary-action@v1
+        with:
+          bin: web2doc
+          target: ${{ matrix.target }}
+          archive: web2doc-$target
+          checksum: sha256
+          token: ${{ secrets.GITHUB_TOKEN }}
