@@ -22,6 +22,7 @@
 - [LLM 规则分析](#llm-规则分析)
 - [覆盖率与失败口径](#覆盖率与失败口径)
 - [真实站点验证](#真实站点验证)
+- [作为 AI Coding Skill 使用](#作为-ai-coding-skill-使用)
 - [开发](#开发)
 - [故障排查](#故障排查)
 
@@ -389,6 +390,37 @@ INFO run complete baseline=50 ok=19 failed=0 excluded=1  coverage=0.38  failure_
 | 定价表格 GFM | 同上 | `td→th` + `<b>` 剥离修复 |
 | 坏链口径 | fixture | port 1 拒绝 → failed=1, failure_rate=0.33 |
 | robots 合规 | fixture | 被禁页排除，正常页不受影响 |
+
+---
+
+## 作为 AI Coding Skill 使用
+
+把 Web2Doc 包装成 Agent Skill，让 AI 编码工具（opencode / Claude Code 等）在"需要某个库的最新官方文档"时**自动调用** `web2doc` 抓取并读取，从而减少幻觉、对齐最新 API。可分发的 skill 位于仓库内 `skills/web2doc/SKILL.md`。
+
+### 安装
+
+前置：`web2doc` 已在 PATH（见[安装](#安装)）。
+
+```bash
+# 默认装到 opencode 全局
+just install-skill
+
+# 或指定目标 skills 目录
+just install-skill ~/.claude/skills      # Claude Code 全局
+just install-skill .opencode/skills      # 当前项目 (opencode)
+```
+
+或手动拷贝 `skills/web2doc/` 到下列任一位置，然后**重启 AI 工具**生效：
+
+| 工具 / 范围 | 路径 |
+| --- | --- |
+| opencode（项目） | `.opencode/skills/web2doc/` |
+| opencode（全局） | `~/.config/opencode/skills/web2doc/` |
+| Claude Code（项目 / 全局） | `.claude/skills/web2doc/` 或 `~/.claude/skills/web2doc/` |
+
+### 触发
+
+命中如"抓一下 xxx 的最新文档"、"给你个文档链接，先读官方文档再写"等场景时，agent 会自动运行 `web2doc <url> --bundle` 并读取产物 `_bundle.md` 作为上下文。
 
 ---
 
