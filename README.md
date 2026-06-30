@@ -49,7 +49,7 @@
 ## 安装
 
 ```bash
-git clone https://github.com/<user>/web2doc
+git clone https://github.com/LeonRust/Web2Doc
 cd web2doc
 cargo build --release
 
@@ -85,32 +85,32 @@ Web2Doc 采用**双引擎**设计，根据站点类型自动/手动选择：
                  │   start URL           │
                  └─────────┬─────────────┘
                            │
-                   ┌───────▼────────┐
+                   ┌───────▼─────────┐
                    │   --mode ?      │
                    │ auto/static/    │
                    │ dynamic         │
                    └───┬─────┬───────┘
            ┌───────────┘     └───────────┐
            ▼                             ▼
-  ┌─────────────────┐          ┌──────────────────┐
-  │  Static Engine   │          │  Dynamic Engine   │
-  │  (reqwest)       │          │  (chromiumoxide)  │
-  │                  │          │                   │
-  │  SSR / SSG 站点   │          │  SPA / CSR 站点    │
-  │  · Docusaurus    │          │  · 客户端渲染       │
-  │  · VitePress     │          │  · 需 Chrome       │
-  │  · mdBook        │          │  · headless 模式   │
-  │  · GitBook       │          │                   │
-  └────────┬─────────┘          └────────┬──────────┘
+  ┌─────────────────┐          ┌───────────────────┐
+  │  Static Engine  │          │  Dynamic Engine   │
+  │  (reqwest)      │          │  (chromiumoxide)  │
+  │                 │          │                   │
+  │  SSR / SSG 站点  │          │  SPA / CSR 站点   │
+  │  · Docusaurus   │          │  · 客户端渲染       │
+  │  · VitePress    │          │  · 需 Chrome      │
+  │  · mdBook       │          │  · headless 模式   │
+  │  · GitBook      │          │                   │
+  └────────┬────────┘          └─────────┬─────────┘
            │                             │
            └───────────┬─────────────────┘
                        ▼
              ┌───────────────────┐
              │  Pipeline         │
-             │  · discover      │
-             │  · readability   │
-             │  · rewrite       │
-             │  · convert/write │
+             │  · discover       │
+             │  · readability    │
+             │  · rewrite        │
+             │  · convert/write  │
              └────────┬──────────┘
                       ▼
               ┌───────────────┐
