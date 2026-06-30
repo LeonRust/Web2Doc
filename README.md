@@ -51,11 +51,19 @@
 
 ### 方式一：一键安装脚本（预编译，无需 Rust，推荐）
 
+Linux / macOS：
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/LeonRust/Web2Doc/main/scripts/install.sh | bash
 ```
 
-自动识别平台，从 GitHub Releases 下载对应预编译二进制到 `~/.local/bin`（带 SHA256 校验）。可指定目录：`curl -fsSL ...install.sh | bash -s -- ~/bin`。
+Windows（PowerShell）：
+
+```powershell
+irm https://raw.githubusercontent.com/LeonRust/Web2Doc/main/scripts/install.ps1 | iex
+```
+
+自动识别平台，从 GitHub Releases 下载对应预编译二进制（带 SHA256 校验）。安装目录：Linux/macOS 为 `~/.local/bin`（可 `... | bash -s -- ~/bin` 指定）；Windows 为 `%LOCALAPPDATA%\web2doc\bin` 并写入用户 PATH。
 
 ### 方式二：手动下载预编译二进制
 
@@ -63,10 +71,14 @@ curl -fsSL https://raw.githubusercontent.com/LeonRust/Web2Doc/main/scripts/insta
 
 | 平台 | 附件 |
 | --- | --- |
-| Linux x86_64 | `web2doc-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux x86_64（glibc） | `web2doc-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux ARM64（glibc） | `web2doc-aarch64-unknown-linux-gnu.tar.gz` |
+| Linux x86_64（musl，静态） | `web2doc-x86_64-unknown-linux-musl.tar.gz` |
+| Linux ARM64（musl，静态） | `web2doc-aarch64-unknown-linux-musl.tar.gz` |
 | macOS Intel | `web2doc-x86_64-apple-darwin.tar.gz` |
 | macOS Apple Silicon | `web2doc-aarch64-apple-darwin.tar.gz` |
 | Windows x86_64 | `web2doc-x86_64-pc-windows-msvc.zip` |
+| Windows ARM64 | `web2doc-aarch64-pc-windows-msvc.zip` |
 
 每个附件附带 `.sha256` 校验文件。版本由打 `vX.Y.Z` tag 自动构建并发布（见[开发 › 发布](#开发)）。
 
@@ -421,17 +433,21 @@ INFO run complete baseline=50 ok=19 failed=0 excluded=1  coverage=0.38  failure_
 
 **方式一：一键安装（推荐；可让 AI 工具自动执行）**
 
+Linux / macOS：
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/LeonRust/Web2Doc/main/scripts/install-skill.sh | bash
 ```
 
-默认装到 `~/.claude/skills/web2doc/`——该位置会被 **Claude Code 与 opencode 同时自动发现**。也可指定 skills 父目录：
+Windows（PowerShell）：
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/LeonRust/Web2Doc/main/scripts/install-skill.sh | bash -s -- ~/.config/opencode/skills
+```powershell
+irm https://raw.githubusercontent.com/LeonRust/Web2Doc/main/scripts/install-skill.ps1 | iex
 ```
 
-> **让 AI 工具自己装**：直接对你的 agent 说「按 Web2Doc 的 README 安装 web2doc skill」，它会读到并执行上面的一键命令——无需你手动操作。
+默认装到 `~/.claude/skills/web2doc/`——该位置会被 **Claude Code 与 opencode 同时自动发现**。也可指定 skills 父目录（bash：`... | bash -s -- <父目录>`；PowerShell：先 `$env:WEB2DOC_SKILL_DIR="<父目录>"`）。
+
+> **让 AI 工具自己装**：直接对你的 agent 说「按 Web2Doc 的 README 安装 web2doc skill」，它会读到并执行（按自身系统选 bash 或 PowerShell）上面的一键命令——无需你手动操作。
 
 **方式二：已克隆仓库时用 just**
 
@@ -472,7 +488,7 @@ cargo test -- --ignored       # 含网络用例（需外网/Chrome）
 
 推送 `vX.Y.Z` tag 到 GitHub 远端即触发 `.github/workflows/release.yml`，全自动完成：
 
-- 矩阵编译 4 个原生 target（Linux x86_64-gnu / macOS Intel + Apple Silicon / Windows x86_64）
+- 矩阵编译 8 个 target：Linux x86_64/ARM64-gnu、x86_64/ARM64-musl、macOS Intel + Apple Silicon、Windows x86_64 + ARM64（ARM 走 GitHub 原生 ARM runner）
 - 打包 `tar.gz` / `zip` + SHA256，作为附件上传到对应 GitHub Release
 - `git-cliff` 按 Conventional Commits（`feat`/`fix`/`docs`…）自动生成 release notes
 

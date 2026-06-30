@@ -31,11 +31,8 @@ case "$arch" in
     exit 1
     ;;
 esac
-if [ "$os_part" = "unknown-linux-gnu" ] && [ "$arch_part" != "x86_64" ]; then
-  echo "暂未发布 Linux $arch_part 预编译版；请用 cargo install 或自行编译。" >&2
-  exit 1
-fi
 
+# 一键脚本默认装 gnu 版（兼容大多数发行版）；静态 musl 版请从 Releases 手动下载。
 asset="web2doc-${arch_part}-${os_part}.tar.gz"
 
 dl() { # dl <url> <out>
