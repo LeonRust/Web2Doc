@@ -104,6 +104,8 @@ web2doc <URL>
   --delay-ms <MS>          请求间隔            默认 500
   --mode <auto|static|dynamic>  抓取引擎       默认 auto
   --chrome-path <PATH>     指定 Chrome         默认 自动检测
+  --proxy <URL>            出站代理(http/https/socks5)  默认 直连
+  --no-proxy <LIST>        代理绕过列表(逗号分隔)  默认 无
   --base-url <URL>         LLM 端点            默认 https://api.deepseek.com
   --model <NAME>           LLM 模型            默认 deepseek-v4-flash
   --max-failure-rate <F>   失败率阈值          默认 0.20  (S9)
@@ -117,7 +119,11 @@ web2doc <URL>
   - 端点 / 模型：`--base-url` `--model` → `LLM_BASE_URL` `LLM_MODEL` → 配置文件 `[llm]` → 默认（`https://api.deepseek.com` / `deepseek-v4-flash`）。
   - 密钥：`LLM_API_KEY` → 配置文件 `[llm].api_key`；**绝不**接受命令行明文 key（constitution §5）。
 - `.env`：启动时由 `dotenvy` 加载 CWD 下 `.env`（若存在），**不覆盖**已存在的环境变量；随后按上述优先级解析。
-- 配置文件：`<config_dir>/web2doc/config.toml`（Windows = `%APPDATA%`；macOS / Linux 统一遵循 XDG = `$XDG_CONFIG_HOME` 否则 `~/.config`），仅含 `[llm]` 段，全字段可选；不存在 / 解析失败均不影响抓取（LLM 降级回退规则）。
+- **代理（出站）配置来源优先级**：CLI(`--proxy`/`--no-proxy`) > 标准环境变量（`ALL_PROXY`/`HTTPS_PROXY`/`HTTP_PROXY`、`NO_PROXY`，含 `.env`）> 配置文件 `[proxy]` > 直连。
+  - 沿用 curl/系统通用变量名（非 `LLM_*` 风格）：用户/CI 既有代理设置零成本生效。
+  - 统一覆盖三个出站口：静态引擎(reqwest)、共用 client(robots/图片/LLM)、动态引擎(Chrome `--proxy-server`)。
+  - 支持 http/https/socks5（reqwest 启用 `socks` feature）。带认证代理：静态引擎支持；**Chrome 暂不支持（Phase 1）**，去凭据后告警，需认证时用 `--mode static`。凭据为敏感信息，日志脱敏（constitution §5）。
+- 配置文件：`<config_dir>/web2doc/config.toml`（Windows = `%APPDATA%`；macOS / Linux 统一遵循 XDG = `$XDG_CONFIG_HOME` 否则 `~/.config`），含 `[llm]` / `[proxy]` 段，全字段可选；不存在 / 解析失败均不影响抓取（LLM 降级回退规则）。
 - `config::Config` 由 CLI + 环境变量（含 `.env`）+ 配置文件归一后冻结，向下注入；业务模块不再读 env / 文件。
 - 续传为默认行为（检测 `<out>/manifest.json`）；`--fresh` 显式忽略并重抓（清空 `.cache` 与 manifest，并全量重算映射，T-3）。
 

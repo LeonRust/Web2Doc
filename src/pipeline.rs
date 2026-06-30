@@ -39,9 +39,14 @@ pub async fn run<F: Fetcher + Sync>(fetcher: &F, config: &Config) -> Result<RunR
     let prefixes = effective_prefixes(config);
 
     // robots 拉取 / 图片下载 / LLM 共用的 HTTP 客户端（与页面抓取引擎解耦）。
-    let http = reqwest::Client::builder()
+    let mut http_builder = reqwest::Client::builder()
         .user_agent(concat!("web2doc/", env!("CARGO_PKG_VERSION")))
-        .timeout(Duration::from_secs(30))
+        .timeout(Duration::from_secs(30));
+    http_builder = match &config.proxy {
+        Some(p) => http_builder.proxy(p.reqwest_proxy()?),
+        None => http_builder.no_proxy(),
+    };
+    let http = http_builder
         .build()
         .map_err(|e| Error::Fetch(format!("http client: {e}")))?;
 

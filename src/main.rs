@@ -27,11 +27,13 @@ async fn main() -> anyhow::Result<()> {
                     "未检测到 Chrome，已降级为静态模式（SPA 站点内容可能不全；安装 Chrome 或 --chrome-path 启用动态引擎）"
                 );
             }
-            AnyFetcher::Static(StaticFetcher::new()?)
+            AnyFetcher::Static(StaticFetcher::new(config.proxy.as_ref())?)
         }
         EngineChoice::Dynamic(path) => {
             tracing::info!(chrome = %path.display(), "使用动态引擎（Chrome 渲染）");
-            AnyFetcher::Dynamic(Box::new(DynamicFetcher::launch(&path).await?))
+            AnyFetcher::Dynamic(Box::new(
+                DynamicFetcher::launch(&path, config.proxy.as_ref()).await?,
+            ))
         }
     };
 

@@ -167,6 +167,8 @@ web2doc <URL> [选项]
 | `--concurrency <N>` | integer | 4 | 并发请求数 |
 | `--delay-ms <MS>` | integer | 500 | 请求间隔（毫秒），礼貌限速 |
 | `--chrome-path <PATH>` | path | 自动检测 | Chrome 可执行文件路径（三平台兼容） |
+| `--proxy <URL>` | string | — | 出站代理（http/https/socks5），覆盖静态+动态引擎 |
+| `--no-proxy <LIST>` | string | — | 代理绕过列表（逗号分隔，如 `localhost,127.0.0.1`） |
 | `--fresh` | flag | false | 忽略已有进度，从头抓取 |
 | `--ignore-robots` | flag | false | 忽略 `robots.txt` |
 
@@ -199,13 +201,15 @@ LLM 三项配置（端点 / 模型 / 密钥）支持多种来源，优先级 **C
 
 ## 环境变量 / .env
 
-LLM 配置支持三种环境变量，均可通过 shell 或项目根目录 `.env` 文件设置（`.env` 不覆盖已存在的环境变量）：
+LLM 与代理配置均可通过 shell 或项目根目录 `.env` 文件设置（`.env` 不覆盖已存在的环境变量）：
 
 | 变量 | 说明 |
 | --- | --- |
 | `LLM_BASE_URL` | LLM 端点（优先级高于配置文件，低于 `--base-url`） |
 | `LLM_MODEL` | LLM 模型名（优先级高于配置文件，低于 `--model`） |
 | `LLM_API_KEY` | LLM API Key（优先级高于配置文件）；设置后才启用 LLM 规则分析 |
+| `ALL_PROXY` / `HTTPS_PROXY` / `HTTP_PROXY` | 出站代理（标准变量名；解析顺序 ALL→HTTPS→HTTP，低于 `--proxy`） |
+| `NO_PROXY` | 代理绕过列表（低于 `--no-proxy`） |
 | `RUST_LOG` | 覆盖默认日志级别（例 `RUST_LOG=web2doc=debug`） |
 
 `.env` 示例：
@@ -213,11 +217,13 @@ LLM 配置支持三种环境变量，均可通过 shell 或项目根目录 `.env
 LLM_BASE_URL=https://api.deepseek.com
 LLM_MODEL=deepseek-v4-flash
 LLM_API_KEY=sk-...
+HTTPS_PROXY=http://127.0.0.1:7890
+NO_PROXY=localhost,127.0.0.1
 ```
 
 ## 配置文件
 
-可在用户配置目录放置 `web2doc/config.toml` 持久化 LLM 设置（优先级低于 CLI 与环境变量）：
+可在用户配置目录放置 `web2doc/config.toml` 持久化 LLM / 代理设置（优先级低于 CLI 与环境变量）：
 
 | 平台 | 路径 |
 | --- | --- |
@@ -229,9 +235,15 @@ LLM_API_KEY=sk-...
 base_url = "https://api.openai.com/v1"
 model = "gpt-4o"
 api_key = "sk-..."
+
+[proxy]
+url = "http://127.0.0.1:7890"
+no_proxy = "localhost,127.0.0.1,*.internal"
 ```
 
-所有字段均可省略；缺失项回退到默认值（`base_url=https://api.deepseek.com`、`model=deepseek-v4-flash`）。文件不存在或解析失败均不影响抓取（仅 LLM 规则分析降级为内置默认规则）。
+所有字段均可省略；缺失项回退到默认值（`base_url=https://api.deepseek.com`、`model=deepseek-v4-flash`；代理默认直连）。文件不存在或解析失败均不影响抓取（仅 LLM 规则分析降级为内置默认规则）。
+
+> **代理说明**：`--proxy` 同时作用于静态引擎（reqwest）与动态引擎（Chrome），覆盖页面抓取 / 图片下载 / robots / LLM 全部出站流量。静态引擎支持带认证代理（`http://user:pass@host:port`）与 SOCKS5；**动态引擎（Chrome）暂不支持带认证的代理**，如需认证代理请改用 `--mode static`。
 
 ---
 

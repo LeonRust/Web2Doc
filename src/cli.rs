@@ -73,6 +73,14 @@ pub struct Cli {
     #[arg(long)]
     pub model: Option<String>,
 
+    /// 出站代理 URL（http/https/socks5）。优先级：CLI > env(ALL_PROXY/HTTPS_PROXY/HTTP_PROXY) / .env > 配置文件。
+    #[arg(long)]
+    pub proxy: Option<String>,
+
+    /// 代理绕过列表（逗号分隔，如 `localhost,127.0.0.1,*.internal`）。亦可经 env(NO_PROXY) / 配置文件。
+    #[arg(long = "no-proxy")]
+    pub no_proxy: Option<String>,
+
     /// 失败率阈值（超过判整次失败）。
     #[arg(long, default_value_t = 0.20)]
     pub max_failure_rate: f64,
@@ -112,6 +120,8 @@ mod tests {
         assert_eq!(cli.mode, Mode::Auto);
         assert_eq!(cli.base_url, None);
         assert_eq!(cli.model, None);
+        assert_eq!(cli.proxy, None);
+        assert_eq!(cli.no_proxy, None);
         assert!(!cli.bundle);
         assert_eq!(cli.format, OutputFormat::Md);
         assert!(!cli.ignore_robots);
@@ -156,5 +166,20 @@ mod tests {
         .unwrap();
         assert_eq!(cli.base_url.as_deref(), Some("https://api.openai.com/v1"));
         assert_eq!(cli.model.as_deref(), Some("gpt-4o"));
+    }
+
+    #[test]
+    fn proxy_flags_parse_into_some() {
+        let cli = Cli::try_parse_from([
+            "web2doc",
+            "https://x.com/docs/",
+            "--proxy",
+            "socks5://127.0.0.1:1080",
+            "--no-proxy",
+            "localhost,127.0.0.1",
+        ])
+        .unwrap();
+        assert_eq!(cli.proxy.as_deref(), Some("socks5://127.0.0.1:1080"));
+        assert_eq!(cli.no_proxy.as_deref(), Some("localhost,127.0.0.1"));
     }
 }

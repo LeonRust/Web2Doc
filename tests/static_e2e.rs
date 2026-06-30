@@ -82,6 +82,7 @@ fn config_for(port: u16, out: PathBuf, max_pages: usize, fresh: bool) -> Config 
         fresh,
         verbose: 0,
         api_key: None,
+        proxy: None,
     }
 }
 
@@ -90,7 +91,7 @@ async fn end_to_end_static_site() {
     let port = start_server();
     let tmp = tempfile::tempdir().unwrap();
     let config = config_for(port, tmp.path().to_path_buf(), 500, false);
-    let fetcher = StaticFetcher::new().unwrap();
+    let fetcher = StaticFetcher::new(None).unwrap();
 
     let report = pipeline::run(&fetcher, &config).await.unwrap();
 
@@ -122,7 +123,7 @@ async fn resume_skips_completed_no_half_state() {
     let port = start_server();
     let tmp = tempfile::tempdir().unwrap();
     let config = config_for(port, tmp.path().to_path_buf(), 500, false);
-    let fetcher = StaticFetcher::new().unwrap();
+    let fetcher = StaticFetcher::new(None).unwrap();
 
     let r1 = pipeline::run(&fetcher, &config).await.unwrap();
     assert_eq!(r1.ok, 2);
@@ -139,7 +140,7 @@ async fn max_pages_truncation_is_partial_not_failure() {
     let port = start_server();
     let tmp = tempfile::tempdir().unwrap();
     let config = config_for(port, tmp.path().to_path_buf(), 1, false);
-    let fetcher = StaticFetcher::new().unwrap();
+    let fetcher = StaticFetcher::new(None).unwrap();
 
     let report = pipeline::run(&fetcher, &config).await.unwrap();
 
@@ -183,7 +184,7 @@ async fn robots_disallow_excludes_page() {
     let port = start_server_with_robots();
     let tmp = tempfile::tempdir().unwrap();
     let config = config_for(port, tmp.path().to_path_buf(), 500, false); // ignore_robots=false
-    let fetcher = StaticFetcher::new().unwrap();
+    let fetcher = StaticFetcher::new(None).unwrap();
 
     let report = pipeline::run(&fetcher, &config).await.unwrap();
 
@@ -231,7 +232,7 @@ async fn broken_link_counts_as_failed_and_triggers_failure() {
     let port = start_server_with_bad_link();
     let tmp = tempfile::tempdir().unwrap();
     let config = config_for(port, tmp.path().to_path_buf(), 500, false);
-    let fetcher = StaticFetcher::new().unwrap();
+    let fetcher = StaticFetcher::new(None).unwrap();
 
     let report = pipeline::run(&fetcher, &config).await.unwrap();
 

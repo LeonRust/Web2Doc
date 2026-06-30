@@ -9,6 +9,7 @@ use tokio::task::JoinHandle;
 use url::Url;
 
 use super::{Engine, Fetcher, RenderedPage};
+use crate::config::ProxyConfig;
 use crate::error::{Error, Result};
 
 /// 基于 chromiumoxide 的动态抓取器：渲染后取 DOM。
@@ -19,14 +20,36 @@ pub struct DynamicFetcher {
 }
 
 impl DynamicFetcher {
-    /// 启动 headless Chrome（指定可执行路径）。
-    pub async fn launch(chrome_path: &Path) -> Result<Self> {
+    /// 启动 headless Chrome（指定可执行路径）。`proxy` 为 `None` 时直连。
+    ///
+    /// Phase 1：Chrome 仅支持免认证代理；带凭据的代理会忽略凭据并告警（请改用 `--mode static`）。
+    pub async fn launch(chrome_path: &Path, proxy: Option<&ProxyConfig>) -> Result<Self> {
         // 唯一 user-data-dir，避免默认固定 profile 的 SingletonLock 冲突（多次运行 — constitution §8）。
         let user_data = std::env::temp_dir().join(format!("web2doc-chrome-{}", std::process::id()));
-        let config = BrowserConfig::builder()
+
+        let mut proxy_args: Vec<String> = Vec::new();
+        if let Some(p) = proxy {
+            if let Some(server) = p.chrome_server() {
+                proxy_args.push(format!("--proxy-server={server}"));
+            }
+            if let Some(bypass) = p.chrome_bypass() {
+                proxy_args.push(format!("--proxy-bypass-list={bypass}"));
+            }
+            if p.has_credentials() {
+                tracing::warn!(
+                    "动态引擎(Chrome)暂不支持带认证的代理，已忽略凭据；如需认证代理请改用 --mode static"
+                );
+            }
+        }
+
+        let mut builder = BrowserConfig::builder()
             .chrome_executable(chrome_path)
             .user_data_dir(&user_data)
-            .no_sandbox()
+            .no_sandbox();
+        for arg in proxy_args {
+            builder = builder.arg(arg);
+        }
+        let config = builder
             .build()
             .map_err(|e| Error::Fetch(format!("browser config: {e}")))?;
         let (browser, mut handler) = Browser::launch(config)

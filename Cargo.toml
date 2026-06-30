@@ -22,7 +22,7 @@ futures = "0.3.32"
 htmd = "0.5.4"
 lol_html = "3.0.0"
 mime_guess = "2.0.5"
-reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "charset", "json"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "charset", "json", "socks"] }
 scraper = "0.27.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
