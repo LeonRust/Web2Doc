@@ -44,8 +44,8 @@ jobs:
             os: ubuntu-latest
           - target: aarch64-unknown-linux-musl # Linux ARM64 静态（musl）：在 x86_64 宿主用 cross 交叉编译（原生 ARM runner 上 cross 会崩）
             os: ubuntu-latest
-          - target: x86_64-apple-darwin # macOS Intel
-            os: macos-13
+          - target: x86_64-apple-darwin # macOS Intel：在 Apple Silicon runner 上交叉编译（避开 macos-13 供给问题）
+            os: macos-latest
           - target: aarch64-apple-darwin # macOS Apple Silicon
             os: macos-latest
           - target: x86_64-pc-windows-msvc
