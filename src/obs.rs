@@ -12,8 +12,10 @@ use tracing_subscriber::{fmt, EnvFilter};
 pub fn init(verbose: u8) {
     let level = level_for(verbose);
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        // 抑制 chromiumoxide CDP 协议版本噪声（"WS Invalid message"）。
-        EnvFilter::new(format!("{level},chromiumoxide=error"))
+        // 抑制 chromiumoxide CDP 协议版本噪声 + scraper/html5ever 命名空间噪声。
+        EnvFilter::new(format!(
+            "{level},chromiumoxide=error,scraper=error,html5ever=error,selectors=error"
+        ))
     });
     let _ = fmt().with_env_filter(filter).with_target(false).try_init();
 }
