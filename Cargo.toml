@@ -4,6 +4,7 @@ version = "0.1.3"
 edition = "2021"
 rust-version = "1.85"
 description = "Crawl an online documentation site into structured local Markdown for AI coding context"
+license = "MIT"
 publish = false
 
 # 依赖按里程碑用 `cargo add` 引入（plan §3，实现期验证版本）：

@@ -3,7 +3,7 @@
 将在线文档站点抓取为本地结构化 Markdown/HTML，供 AI Coding 工具作为上下文约束使用。
 
 [![Rust](https://img.shields.io/badge/rust-1.85+-orange)](https://www.rust-lang.org/)
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)](./LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 [![Test](https://img.shields.io/badge/test-80%20unit%20%2B%205%20integration-green)]()
 
 ---
