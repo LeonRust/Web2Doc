@@ -60,6 +60,14 @@ pub async fn run<F: Fetcher + Sync>(fetcher: &F, config: &Config) -> Result<RunR
     )
     .await?;
 
+    tracing::debug!(
+        baseline = discovery.baseline_total,
+        tasks = discovery.tasks.len(),
+        truncated = discovery.truncated,
+        robots_skipped = discovery.robots_skipped,
+        "discover 完成"
+    );
+
     // rewrite 用全量映射：dedup_key → rel_path
     let page_map: BTreeMap<String, String> = discovery
         .tasks
@@ -73,8 +81,12 @@ pub async fn run<F: Fetcher + Sync>(fetcher: &F, config: &Config) -> Result<RunR
 
     std::fs::create_dir_all(config.out_dir.join(".cache"))?;
 
+    tracing::debug!("阶段A 抓取+提取 开始");
     stage_fetch(fetcher, config, &rules, &manifest).await;
+    tracing::debug!("阶段A 完成");
+    tracing::debug!("阶段B 改写+转换+写盘 开始");
     stage_write(config, &page_map, &manifest, &http).await;
+    tracing::debug!("阶段B 完成");
 
     let guard = lock(&manifest);
     writer::write_index(&config.out_dir, &guard, config.format)?;
@@ -217,6 +229,7 @@ async fn stage_fetch<F: Fetcher + Sync>(
                 if !delay.is_zero() {
                     tokio::time::sleep(delay).await;
                 }
+                let t0 = std::time::Instant::now();
                 let result = process_fetch(fetcher, &url, &rules, &cache_dir).await;
                 let mut m = lock(&manifest);
                 if let Some(rec) = m.pages.get_mut(&key) {
@@ -224,7 +237,7 @@ async fn stage_fetch<F: Fetcher + Sync>(
                         Ok(Some(cache_file)) => {
                             rec.status = PageStatus::Fetched;
                             rec.cache = Some(cache_file);
-                            tracing::debug!(url = %key, "fetched");
+                            tracing::debug!(url = %key, elapsed_ms = t0.elapsed().as_millis(), "fetched");
                         }
                         Ok(None) => rec.status = PageStatus::Excluded,
                         Err(e) => {
@@ -292,6 +305,7 @@ async fn stage_write(
             let page_map = page_map.clone();
             async move {
                 let seen_cache = { lock(&manifest).assets_seen.clone() };
+                let t0 = std::time::Instant::now();
                 let result = process_write(
                     http,
                     &cache_dir,
@@ -312,7 +326,7 @@ async fn stage_write(
                         Ok((asset_rels, new_seen)) => {
                             rec.status = PageStatus::Written;
                             rec.assets = asset_rels;
-                            tracing::debug!(url = %key, assets = rec.assets.len(), "written");
+                            tracing::debug!(url = %key, assets = rec.assets.len(), elapsed_ms = t0.elapsed().as_millis(), "written");
                             Some(new_seen)
                         }
                         Err(e) => {
