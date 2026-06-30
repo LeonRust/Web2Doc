@@ -49,14 +49,34 @@
 
 ## 安装
 
+### 方式一：一键安装脚本（预编译，无需 Rust，推荐）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/LeonRust/Web2Doc/main/scripts/install.sh | bash
+```
+
+自动识别平台，从 GitHub Releases 下载对应预编译二进制到 `~/.local/bin`（带 SHA256 校验）。可指定目录：`curl -fsSL ...install.sh | bash -s -- ~/bin`。
+
+### 方式二：手动下载预编译二进制
+
+从 [GitHub Releases](https://github.com/LeonRust/Web2Doc/releases) 下载对应平台的压缩包，解压后把 `web2doc` 放到 `PATH`：
+
+| 平台 | 附件 |
+| --- | --- |
+| Linux x86_64 | `web2doc-x86_64-unknown-linux-gnu.tar.gz` |
+| macOS Intel | `web2doc-x86_64-apple-darwin.tar.gz` |
+| macOS Apple Silicon | `web2doc-aarch64-apple-darwin.tar.gz` |
+| Windows x86_64 | `web2doc-x86_64-pc-windows-msvc.zip` |
+
+每个附件附带 `.sha256` 校验文件。版本由打 `vX.Y.Z` tag 自动构建并发布（见[开发 › 发布](#开发)）。
+
+### 方式三：从源码构建（需 Rust 1.85+）
+
 ```bash
 git clone https://github.com/LeonRust/Web2Doc
 cd web2doc
-cargo build --release
-
-# 二进制位于 target/release/web2doc
-# 可选：安装到 $PATH
-cargo install --path .
+cargo build --release           # 二进制位于 target/release/web2doc
+cargo install --path .          # 可选：安装到 $PATH
 ```
 
 ---
@@ -399,24 +419,37 @@ INFO run complete baseline=50 ok=19 failed=0 excluded=1  coverage=0.38  failure_
 
 ### 安装
 
-前置：`web2doc` 已在 PATH（见[安装](#安装)）。
+**方式一：一键安装（推荐；可让 AI 工具自动执行）**
 
 ```bash
-# 默认装到 opencode 全局
-just install-skill
-
-# 或指定目标 skills 目录
-just install-skill ~/.claude/skills      # Claude Code 全局
-just install-skill .opencode/skills      # 当前项目 (opencode)
+curl -fsSL https://raw.githubusercontent.com/LeonRust/Web2Doc/main/scripts/install-skill.sh | bash
 ```
 
-或手动拷贝 `skills/web2doc/` 到下列任一位置，然后**重启 AI 工具**生效：
+默认装到 `~/.claude/skills/web2doc/`——该位置会被 **Claude Code 与 opencode 同时自动发现**。也可指定 skills 父目录：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/LeonRust/Web2Doc/main/scripts/install-skill.sh | bash -s -- ~/.config/opencode/skills
+```
+
+> **让 AI 工具自己装**：直接对你的 agent 说「按 Web2Doc 的 README 安装 web2doc skill」，它会读到并执行上面的一键命令——无需你手动操作。
+
+**方式二：已克隆仓库时用 just**
+
+```bash
+just install-skill                  # -> ~/.config/opencode/skills
+just install-skill ~/.claude/skills # -> Claude Code 全局
+just install-skill .opencode/skills # -> 当前项目 (opencode)
+```
+
+**方式三：手动拷贝** `skills/web2doc/` 到下列任一位置：
 
 | 工具 / 范围 | 路径 |
 | --- | --- |
 | opencode（项目） | `.opencode/skills/web2doc/` |
 | opencode（全局） | `~/.config/opencode/skills/web2doc/` |
 | Claude Code（项目 / 全局） | `.claude/skills/web2doc/` 或 `~/.claude/skills/web2doc/` |
+
+安装后**重启 AI 工具**生效。`web2doc` 二进制无需预装——skill 首次使用时会自动下载**预编译二进制**（无需 Rust，见[安装](#安装)）。
 
 ### 触发
 
@@ -431,9 +464,24 @@ just install-skill .opencode/skills      # 当前项目 (opencode)
 just check    # cargo fmt --check && clippy -D warnings && test
 
 # 测试
-cargo test                    # 单元 + 集成（80 单元 + 5 集成）
+cargo test                    # 单元 + 集成（86 单元 + 5 集成）
 cargo test -- --ignored       # 含网络用例（需外网/Chrome）
 ```
+
+### 发布
+
+推送 `vX.Y.Z` tag 到 GitHub 远端即触发 `.github/workflows/release.yml`，全自动完成：
+
+- 矩阵编译 4 个原生 target（Linux x86_64-gnu / macOS Intel + Apple Silicon / Windows x86_64）
+- 打包 `tar.gz` / `zip` + SHA256，作为附件上传到对应 GitHub Release
+- `git-cliff` 按 Conventional Commits（`feat`/`fix`/`docs`…）自动生成 release notes
+
+```bash
+# 典型流程：改 Cargo.toml 版本 → 提交 → 打 tag → 推到 github 远端
+git tag -a v0.1.3 -m "v0.1.3" && git push github v0.1.3
+```
+
+> tag 触发的 workflow 使用**被打 tag 那个 commit 里**的 `release.yml`/`cliff.toml`，故二者需先随分支提交。
 
 ### 项目结构
 
